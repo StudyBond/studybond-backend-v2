@@ -1,0 +1,4 @@
+src/modules/questions/questions.routes.ts(9,30): error TS2306: File 'C:/Users/DELL/StudyBond/studybond-backend/src/shared/decorators/authenticate.ts' is not a module.
+src/modules/questions/questions.routes.ts(10,30): error TS2306: File 'C:/Users/DELL/StudyBond/studybond-backend/src/shared/decorators/requireAdmin.ts' is not a module.
+src/modules/questions/questions.service.ts(11,1): error TS6133: 'EXAM_TYPES' is declared but its value is never read.
+src/modules/questions/questions.service.ts(39,17): error TS2561: Object literal may only specify known properties, but 'optionE' does not exist in type '(Without<QuestionCreateInput, QuestionUncheckedCreateInput> & QuestionUncheckedCreateInput) | (Without<...> & QuestionCreateInput)'. Did you mean to write 'optionA'?

@@ -1,0 +1,69 @@
+src/modules/exams/exams.routes.ts(53,8): error TS2345: Argument of type '(req: FastifyRequest<{ Body: StartExamInput; }>, reply: FastifyReply) => Promise<never>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'req' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly tags: readonly ["Exams"]; readonly summary: "Start a new exam"; readonly description: "Starts a new exam session with selected subjects. Returns questions without correct answers."; readonly security: readonly [...]; readonly body: {...' is not assignable to type 'FastifyRequest<{ Body: { examType: "REAL_PAST_QUESTION" | "PRACTICE"; subjects: ("Mathematics" | "English" | "Physics" | "Chemistry" | "Biology")[]; }; }, RawServerDefault, IncomingMessage, ... 4 more ..., ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Body: { examType: "REAL_PAST_QUESTION" | "PRACTICE"; subjects: ("Mathematics" | "English" | "Physics" | "Chemistry" | "Biology")[]; }; }'.
+        Types of property 'Body' are incompatible.
+          Type 'unknown' is not assignable to type '{ examType: "REAL_PAST_QUESTION" | "PRACTICE"; subjects: ("Mathematics" | "English" | "Physics" | "Chemistry" | "Biology")[]; }'.
+src/modules/exams/exams.routes.ts(95,8): error TS2345: Argument of type '(req: FastifyRequest<{ Params: { examId: string; }; Body: SubmitExamInput; }>, reply: FastifyReply) => Promise<never>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'req' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly tags: readonly ["Exams"]; readonly summary: "Submit exam answers"; readonly description: "Submits answers for an in-progress exam and returns scored results."; readonly security: readonly [...]; readonly params: { ...; }; readonly bo...' is not assignable to type 'FastifyRequest<{ Params: { examId: string; }; Body: { answers: { questionId: number; answer: string | null; timeSpentSeconds: number; }[]; }; }, RawServerDefault, IncomingMessage, ... 4 more ..., ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: { examId: string; }; Body: { answers: { questionId: number; answer: string | null; timeSpentSeconds: number; }[]; }; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ examId: string; }'.
+src/modules/exams/exams.routes.ts(118,8): error TS2345: Argument of type '(req: FastifyRequest<{ Params: { examId: string; }; }>, reply: FastifyReply) => Promise<never>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'req' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly tags: readonly ["Exams"]; readonly summary: "Get exam questions"; readonly description: "Gets questions for an in-progress exam. Use for resuming after page refresh."; readonly security: readonly [...]; readonly params: { ...; }; }, ...' is not assignable to type 'FastifyRequest<{ Params: { examId: string; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: { examId: string; }; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ examId: string; }'.
+src/modules/exams/exams.routes.ts(150,8): error TS2345: Argument of type '(req: FastifyRequest<{ Querystring: HistoryQuery; }>, reply: FastifyReply) => Promise<never>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'req' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly tags: readonly ["Exams"]; readonly summary: "Get exam history"; readonly description: "Gets paginated list of user's exams with aggregate statistics."; readonly security: readonly [...]; readonly querystring: { ...; }; }, FastifyType...' is not assignable to type 'FastifyRequest<{ Querystring: { page: number; limit: number; examType?: "REAL_PAST_QUESTION" | "PRACTICE" | "ONE_V_ONE_DUEL" | "GROUP_COLLAB" | undefined; status?: "IN_PROGRESS" | "COMPLETED" | "ABANDONED" | undefined; }; }, ... 6 more ..., ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Querystring: { page: number; limit: number; examType?: "REAL_PAST_QUESTION" | "PRACTICE" | "ONE_V_ONE_DUEL" | "GROUP_COLLAB" | undefined; status?: "IN_PROGRESS" | "COMPLETED" | "ABANDONED" | undefined; }; }'.
+        Types of property 'Querystring' are incompatible.
+          Type 'unknown' is not assignable to type '{ page: number; limit: number; examType?: "REAL_PAST_QUESTION" | "PRACTICE" | "ONE_V_ONE_DUEL" | "GROUP_COLLAB" | undefined; status?: "IN_PROGRESS" | "COMPLETED" | "ABANDONED" | undefined; }'.
+src/modules/exams/exams.routes.ts(173,8): error TS2345: Argument of type '(req: FastifyRequest<{ Params: { examId: string; }; }>, reply: FastifyReply) => Promise<never>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'req' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly tags: readonly ["Exams"]; readonly summary: "Get exam details"; readonly description: "Gets full details for a completed exam including answers and explanations."; readonly security: readonly [...]; readonly params: { ...; }; }, Fast...' is not assignable to type 'FastifyRequest<{ Params: { examId: string; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: { examId: string; }; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ examId: string; }'.
+src/modules/exams/exams.routes.ts(196,8): error TS2345: Argument of type '(req: FastifyRequest<{ Params: { examId: string; }; }>, reply: FastifyReply) => Promise<never>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'req' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly tags: readonly ["Exams"]; readonly summary: "Retake exam"; readonly description: "Creates a retake of a completed exam. Questions and options are shuffled."; readonly security: readonly [...]; readonly params: { ...; }; }, FastifyTyp...' is not assignable to type 'FastifyRequest<{ Params: { examId: string; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: { examId: string; }; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ examId: string; }'.
+src/modules/exams/exams.routes.ts(219,8): error TS2345: Argument of type '(req: FastifyRequest<{ Params: { examId: string; }; }>, reply: FastifyReply) => Promise<never>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'req' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly tags: readonly ["Exams"]; readonly summary: "Abandon exam"; readonly description: "Abandons an in-progress exam. No SP is earned."; readonly security: readonly [...]; readonly params: { ...; }; }, FastifyTypeProviderDefault, unknown,...' is not assignable to type 'FastifyRequest<{ Params: { examId: string; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: { examId: string; }; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ examId: string; }'.
+src/modules/exams/exams.schema.ts(18,28): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly ["Mathematics", "English", "Physics", "Chemistry", "Biology"], params?: string | { error?: string | $ZodErrorMap<$ZodIssueInvalidValue<unknown>> | undefined; message?: string | undefined; } | undefined): ZodEnum<...>', gave the following error.
+    Object literal may only specify known properties, and 'errorMap' does not exist in type '{ error?: string | $ZodErrorMap<$ZodIssueInvalidValue<unknown>> | undefined; message?: string | undefined; }'.
+  Overload 2 of 2, '(entries: Readonly<Record<string, EnumValue>>, params?: string | { error?: string | $ZodErrorMap<$ZodIssueInvalidValue<unknown>> | undefined; message?: string | undefined; } | undefined): ZodEnum<...>', gave the following error.
+    Argument of type 'readonly ["Mathematics", "English", "Physics", "Chemistry", "Biology"]' is not assignable to parameter of type 'Readonly<Record<string, EnumValue>>'.
+      Index signature for type 'string' is missing in type 'readonly ["Mathematics", "English", "Physics", "Chemistry", "Biology"]'.
+src/modules/exams/exams.schema.ts(23,29): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: readonly ["REAL_PAST_QUESTION", "PRACTICE"], params?: string | { error?: string | $ZodErrorMap<$ZodIssueInvalidValue<unknown>> | undefined; message?: string | undefined; } | undefined): ZodEnum<...>', gave the following error.
+    Object literal may only specify known properties, and 'errorMap' does not exist in type '{ error?: string | $ZodErrorMap<$ZodIssueInvalidValue<unknown>> | undefined; message?: string | undefined; }'.
+  Overload 2 of 2, '(entries: Readonly<Record<string, EnumValue>>, params?: string | { error?: string | $ZodErrorMap<$ZodIssueInvalidValue<unknown>> | undefined; message?: string | undefined; } | undefined): ZodEnum<...>', gave the following error.
+    Argument of type 'readonly ["REAL_PAST_QUESTION", "PRACTICE"]' is not assignable to parameter of type 'Readonly<Record<string, EnumValue>>'.
+      Index signature for type 'string' is missing in type 'readonly ["REAL_PAST_QUESTION", "PRACTICE"]'.
+src/modules/exams/exams.schema.ts(55,19): error TS2353: Object literal may only specify known properties, and 'required_error' does not exist in type '{ error?: string | $ZodErrorMap<$ZodIssueInvalidType<unknown>> | undefined; message?: string | undefined; }'.
+src/modules/exams/exams.schema.ts(115,18): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(def: number): ZodDefault<ZodOptional<ZodPipe<ZodString, ZodTransform<number, string>>>>', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type 'number'.
+  Overload 2 of 2, '(def: () => number): ZodDefault<ZodOptional<ZodPipe<ZodString, ZodTransform<number, string>>>>', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type '() => number'.
+src/modules/exams/exams.schema.ts(123,18): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(def: number): ZodDefault<ZodOptional<ZodPipe<ZodString, ZodTransform<number, string>>>>', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type 'number'.
+  Overload 2 of 2, '(def: () => number): ZodDefault<ZodOptional<ZodPipe<ZodString, ZodTransform<number, string>>>>', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type '() => number'.
+src/modules/exams/exams.service.ts(14,5): error TS6133: 'FREE_TIER_LIMITS' is declared but its value is never read.
+src/modules/exams/exams.service.ts(42,5): error TS6133: 'getRetakeHistory' is declared but its value is never read.
+src/modules/exams/exams.service.ts(43,5): error TS6133: 'calculateRetakeStats' is declared but its value is never read.
+src/modules/exams/exams.service.ts(154,53): error TS6133: 'idx' is declared but its value is never read.

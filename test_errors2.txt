@@ -1,0 +1,19 @@
+
+[31m⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/tests/unit/bulk-upload.test.ts[2m > [22mBulk Upload - Validation[2m > [22mshould handle whitespace in fields
+[31m[1mAssertionError[22m: expected '  Trimmed Question  ' to be 'Trimmed Question' // Object.is equality[39m
+
+Expected: [32m"Trimmed Question"[39m
+Received: [31m"[7m  [27mTrimmed Question[7m  [27m"[39m
+
+[36m [2m❯[22m src/tests/unit/bulk-upload.test.ts:[2m75:40[22m[39m
+    [90m 73| [39m
+    [90m 74| [39m        // csv…
+    [90m 75| [39m        expect…
+    [90m   | [39m                                       [31m^[39m
+    [90m 76| [39m    })[33m;[39m
+    [90m 77| [39m})[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+

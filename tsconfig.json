@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    /* Language and Environment */
+    "target": "ES2022", // Modern JavaScript features
+    "lib": [
+      "ES2022"
+    ], // Standard library to include
+    "module": "CommonJS", // CommonJS module system (matches package.json)
+    "moduleResolution": "node", // How to resolve imports
+    /* Emit */
+    "outDir": "./dist", // Compiled JS goes here
+    "rootDir": "./src", // Source code location
+    "sourceMap": true, // Generate .map files for debugging
+    "removeComments": true, // Strip comments from compiled code
+    /* Type Checking */
+    "strict": true, // Enable ALL strict checks
+    "noImplicitAny": true, // Catch missing types
+    "strictNullChecks": true, // No null/undefined errors
+    "strictFunctionTypes": true, // Function parameter checking
+    "noUnusedLocals": true, // Warn about unused variables
+    "noUnusedParameters": true, // Warn about unused function params
+    "noImplicitReturns": true, // Functions must return a value
+    "noFallthroughCasesInSwitch": true, // Switch statements must have break
+    /* Modules */
+    "esModuleInterop": true, // Better import compatibility
+    "allowSyntheticDefaultImports": true, // Import * as default
+    "resolveJsonModule": true, // Import JSON files
+    "forceConsistentCasingInFileNames": true, // Case-sensitive imports
+    /* Advanced */
+    "skipLibCheck": true, // Skip type-checking of .d.ts files
+    "declaration": true, // Generate .d.ts files
+    "declarationMap": true // Source maps for .d.ts files
+  },
+  "include": [
+    "src/**/*",
+    "src/types/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts"
+  ]
+}
