@@ -42,11 +42,16 @@ const bookmarkQuestionFullSelect = {
   optionE: true,
   optionEImageUrl: true,
   correctAnswer: true,
-  parentQuestionText: true,
+  parentQuestion: {
+    select: {
+      questionText: true,
+      imageUrl: true
+    }
+  },
   explanation: {
     select: {
-      text: true,
-      imageUrl: true,
+      explanationText: true,
+      explanationImageUrl: true,
       additionalNotes: true
     }
   }
@@ -121,8 +126,13 @@ function serializeBookmarkFull(bookmark: BookmarkFullWithQuestion) {
       optionE: bookmark.question.optionE,
       optionEImageUrl: bookmark.question.optionEImageUrl,
       correctAnswer: bookmark.question.correctAnswer,
-      parentQuestionText: bookmark.question.parentQuestionText,
-      explanation: bookmark.question.explanation
+      parentQuestionText: (bookmark.question as any).parentQuestion?.questionText ?? null,
+      parentQuestionImageUrl: (bookmark.question as any).parentQuestion?.imageUrl ?? null,
+      explanation: bookmark.question.explanation ? {
+        text: bookmark.question.explanation.explanationText,
+        imageUrl: bookmark.question.explanation.explanationImageUrl,
+        additionalNotes: bookmark.question.explanation.additionalNotes
+      } : null
     }
   };
 }
