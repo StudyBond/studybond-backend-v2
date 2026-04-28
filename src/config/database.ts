@@ -1,8 +1,8 @@
 // DATABASE CONFIGURATION
 
-import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+const { PrismaClient } = require('@prisma/client');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -16,7 +16,7 @@ const adapter = new PrismaPg(pool);
  */
 
 const globalForPrisma = globalThis as unknown as {
-    prisma: PrismaClient | undefined;
+    prisma: any | undefined;
 };
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
@@ -39,9 +39,9 @@ if (process.env.NODE_ENV !== 'production') {
 export async function connectDatabase(): Promise<void> {
     try {
         await prisma.$connect();
-        console.log('✅ Database connected successfully');
+        console.log('Database connected successfully');
     } catch (error) {
-        console.error('❌ Database connection failed:', error);
+        console.error('Database connection failed:', error);
         throw error;
     }
 }
@@ -54,7 +54,7 @@ export async function connectDatabase(): Promise<void> {
  */
 export async function disconnectDatabase(): Promise<void> {
     await prisma.$disconnect();
-    console.log('Database disconnected');
+    console.log('Database disconnected.');
 }
 
 export default prisma;

@@ -1,15 +1,10 @@
-// ============================================
-// EXAMS PLUGIN
-// ============================================
-// Fastify plugin registration for exams module
-// Registers all exam routes under /api/exams
+// Registers exam routes under /exams; final mount is at /api in app.ts
 
 import { FastifyInstance } from 'fastify';
 import { examsRoutes } from './exams.routes';
 
 export async function examsPlugin(app: FastifyInstance) {
-    // Register exam routes with prefix
-    await app.register(examsRoutes, { prefix: '/api/exams' });
+    await app.register(examsRoutes, { prefix: '/exams' });
 
-    app.log.info('✅ Exams module registered');
+    app.log.info('Exams module registered');
 }

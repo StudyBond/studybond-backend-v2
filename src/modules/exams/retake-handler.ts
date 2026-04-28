@@ -1,20 +1,12 @@
-// ============================================
-// RETAKE HANDLER
-// ============================================
-// Manages exam retake eligibility and creation
-// Enforces maximum retake limits
-
 import { prisma } from '../../config/database';
 import { EXAM_CONFIG, EXAM_STATUS, EXAM_ERROR_CODES } from './exams.constants';
 import { RetakeEligibility } from './exams.types';
 import { AppError } from '../../shared/errors/AppError';
 
-/**
- * Check if a user can retake a specific exam
- */
 export async function checkRetakeEligibility(
     userId: number,
-    examId: number
+    examId: number,
+    maxRetakesOverride?: number
 ): Promise<RetakeEligibility> {
     // Find the original exam
     const exam = await prisma.exam.findFirst({
@@ -42,7 +34,7 @@ export async function checkRetakeEligibility(
         };
     }
 
-    // Must be completed to retake
+    // Exam must be completed to retake
     if (exam.status !== EXAM_STATUS.COMPLETED) {
         return {
             canRetake: false,
@@ -58,7 +50,6 @@ export async function checkRetakeEligibility(
         ? exam.originalExamId
         : exam.id;
 
-    // Count existing retakes of this exam
     const retakeCount = await prisma.exam.count({
         where: {
             originalExamId: originalExamId,
@@ -66,7 +57,7 @@ export async function checkRetakeEligibility(
         }
     });
 
-    const maxRetakes = exam.maxRetakes ?? EXAM_CONFIG.MAX_RETAKES;
+    const maxRetakes = maxRetakesOverride ?? exam.maxRetakes ?? EXAM_CONFIG.MAX_RETAKES;
     const retakesRemaining = maxRetakes - retakeCount;
     const nextAttemptNumber = retakeCount + 2; // +1 for original, +1 for next
 
@@ -87,9 +78,7 @@ export async function checkRetakeEligibility(
     };
 }
 
-/**
- * Get the original exam ID from any retake chain
- */
+/* Get the original exam ID from any retake chain */
 export async function getOriginalExamId(examId: number): Promise<number> {
     const exam = await prisma.exam.findUnique({
         where: { id: examId },
@@ -103,17 +92,12 @@ export async function getOriginalExamId(examId: number): Promise<number> {
     if (!exam) {
         throw new AppError('Exam not found', 404);
     }
-
-    // If this is a retake, return the original exam ID
-    // If this is the original, return its own ID
     return exam.isRetake && exam.originalExamId
         ? exam.originalExamId
         : exam.id;
 }
 
-/**
- * Get retake history for an original exam
- */
+/* Get retake history for an original exam */
 export async function getRetakeHistory(
     originalExamId: number,
     userId: number
@@ -125,7 +109,7 @@ export async function getRetakeHistory(
     spEarned: number;
     completedAt: Date | null;
 }>> {
-    // Get original exam
+    
     const originalExam = await prisma.exam.findFirst({
         where: {
             id: originalExamId,
@@ -144,7 +128,7 @@ export async function getRetakeHistory(
         return [];
     }
 
-    // Get all retakes
+
     const retakes = await prisma.exam.findMany({
         where: {
             originalExamId: originalExamId,
@@ -177,9 +161,7 @@ export async function getRetakeHistory(
     ];
 }
 
-/**
- * Get improvement stats for retake history
- */
+
 export function calculateRetakeStats(
     history: Array<{ attemptNumber: number; score: number; spEarned: number }>
 ): {

@@ -1,87 +1,110 @@
 # Authentication Module Documentation
 
 ## Overview
-This module handles everything related to user access, including:
-- Creating new accounts (Registration)
-- Logging in
-- Managing security (Passwords, Tokens)
-- Verifying devices
+This module now separates three concerns that were previously mixed together:
 
-It is designed to be **secure**, **fast**, and **easy to maintain**.
+1. Email verification for account activation.
+2. Premium device registration and approval.
+3. Password recovery with reset OTP.
+4. Session lifecycle and invalidation policy.
 
----
+That split keeps the auth flow predictable under premium/free transitions and prevents OTP state collisions.
 
-## 📂 File Structure & Responsibilities
+## Current Access Policy
 
-Each file in this folder has a specific job. Here is what they do:
+### Free users
+- Can sign in on unlimited devices and keep multiple active sessions.
+- Do not enter the premium device registry.
+- Still use email OTP during registration.
 
-| File | Purpose |
-|------|---------|
-| **`auth.plugin.ts`** | **The Entry Point.** It tells the main app to load this module, sets up the helper service, and registers the routes. |
-| **`auth.routes.ts`** | **The Map.** It defines the API URLs (like `/api/auth/login`) and tells the app which function handles each URL. |
-| **`auth.controller.ts`** | **The Traffic Cop.** It receives requests from users, checks if the data is correct (validation), calls the Service to do the work, and sends back the response. |
-| **`auth.service.ts`** | **The Brain.** This contains the real logic. It talks to the database, hashes passwords, and generates security tokens. |
-| **`auth.types.ts`** | **The Rules.** It defines what data we expect from users (like "email must be a string") using Zod. |
+### Premium users
+- Premium access is reconciled against `User.isPremium` and `User.deviceAccessMode`.
+- The first login after premium activation is auto-trusted and becomes the first registered premium device.
+- The second distinct premium device requires a 6-digit email OTP.
+- Only two registered premium devices are allowed per premium cycle.
+- Only one premium session stays active at a time. A fresh premium login invalidates the previous active premium session.
 
----
+### Premium to free downgrade
+- Device registry is cleared.
+- The account returns to free multi-session behavior.
+- Future premium activation starts from a clean device slate again.
 
-## 🔐 Key Features
+## Data Flow
 
-### 1. Secure Registration
-When a user signs up, we don't just save their data. We:
-- **Check** if the email is already used.
-- **Hash the password** using `bcrypt` (so we never store plain passwords).
-- **Create everything at once**: Using a "Database Transaction", we create the User, their first Device, and their first Session all together. If one fails, everything is cancelled.
+### Registration
+- `POST /api/auth/signup`
+- Creates the user and stores an email verification OTP on the user record.
+- Does not create a `UserDevice`.
 
-### 2. Device Verification
-We track which devices users use to log in.
-- **First Device**: Automatically trusted.
-- **New Devices**: We detect them. In the future, we will require email verification (OTP) for unknown devices to prevent hacking.
+### OTP verification
+- `POST /api/auth/verify-otp`
+- If the user is not yet verified, the OTP is treated as an email verification OTP.
+- If the user is already verified and premium sign-in is pending, the OTP is treated as a device registration OTP.
+- Password reset does not use this endpoint. Recovery has its own dedicated flow.
 
-### 3. JWT Tokens (The "Keys")
-We give the user two "keys" when they log in:
-- **Access Token (15 mins)**: Short-lived key for doing things immediately.
-- **Refresh Token (30 days)**: Long-lived key to get a new Access Token without logging in again.
+### Forgot password
+- `POST /api/auth/forgot-password`
+- Accepts only an email address.
+- Always returns the same generic message to avoid account enumeration.
+- If the account exists and is eligible, the backend stores a hashed reset OTP and emails it through the transactional mail service.
+- Abuse controls:
+  - per-account reset email cap
+  - per-IP reset request cap
+  - reset OTP expires quickly
+  - repeated wrong OTP attempts invalidate the current reset challenge
+- If a reset code was just issued, the backend will not immediately issue another one. This prevents email spam and abuse.
 
----
+### Resend password reset OTP
+- `POST /api/auth/resend-reset-otp`
+- Accepts only an email address.
+- Also returns a generic message.
+- Only rotates and resends the OTP if there is an existing pending reset challenge and the cooldown window has passed.
+- If the user asks too soon, the backend no-ops and keeps the current reset challenge unchanged.
 
-## 🚀 API Endpoints
+### Reset password
+- `POST /api/auth/reset-password`
+- Accepts `email`, `otp`, `newPassword`, and `confirmNewPassword`.
+- Verifies the reset OTP against the hashed stored value.
+- Updates the password hash.
+- Clears the reset OTP state.
+- Invalidates every active session for the account.
+- Marks all devices inactive, but keeps trusted premium devices registered for future login.
+- Does not auto-login the user after reset. The user must sign in again, which keeps premium device policy intact.
+- If too many wrong reset codes are entered, the current reset challenge is invalidated and the user must request a fresh code.
 
-### 1. Register
-**URL:** `POST /api/auth/register`
+### Login
+- `POST /api/auth/login`
+- Free login creates a session immediately.
+- Premium login requires device fingerprint context.
+- Premium login either:
+  - auto-trusts the first device,
+  - allows an already verified device, or
+  - sends OTP for the second device.
 
-creates a new user account.
+## Device Identity
+- Legacy `deviceId` and `deviceName` are still accepted.
+- Preferred input is the structured `device` payload.
+- The backend stores:
+  - canonical device key,
+  - fingerprint hash,
+  - normalized device metadata,
+  - latest IP and user agent.
 
-**Input (Body):**
-```json
-{
-  "email": "user@example.com",
-  "password": "securePassword123",
-  "fullName": "John Doe",
-  "aspiringCourse": "Computer Science",
-  "targetScore": 300,
-  "deviceId": "unique-device-id"
-}
-```
+This is stronger than a raw device ID and gives the backend a better chance of recognizing the same device later.
 
-### 2. Login
-**URL:** `POST /api/auth/login`
+## Password Security Boundaries
 
-Logs in an existing user.
+### Logged-in password change
+- `PATCH /api/users/password`
+- Requires the current password.
+- Keeps the current session active and signs out other active sessions.
+- Does not use email OTP.
+- Is limited to a small number of changes per day.
+- Triggers a delayed password-change security email so multiple quick changes do not spam the user.
 
-**Input (Body):**
-```json
-{
-  "email": "user@example.com",
-  "password": "securePassword123",
-  "deviceId": "unique-device-id"
-}
-```
-
----
-
-## 🛠️ How to Add New Features
-
-1. **Define the Data**: Update `auth.types.ts` if you need new fields.
-2. **Update the Logic**: Add functions to `auth.service.ts`.
-3. **Add the URL**: Add a new route in `auth.routes.ts` and a handler in `auth.controller.ts`.
+### Forgot-password recovery
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/resend-reset-otp`
+- `POST /api/auth/reset-password`
+- Uses email OTP because the user is not authenticated.
+- Signs out every active session after a successful reset.

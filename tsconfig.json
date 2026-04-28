@@ -5,8 +5,8 @@
     "lib": [
       "ES2022"
     ], // Standard library to include
-    "module": "CommonJS", // CommonJS module system (matches package.json)
-    "moduleResolution": "node", // How to resolve imports
+    "module": "Node16", // Modern Node module system (respects package.json "type": "commonjs")
+    "moduleResolution": "node16", // Modern Node import resolution
     /* Emit */
     "outDir": "./dist", // Compiled JS goes here
     "rootDir": "./src", // Source code location
@@ -38,6 +38,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "**/*.spec.ts"
   ]
 }

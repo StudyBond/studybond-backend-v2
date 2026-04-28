@@ -1,0 +1,54 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (type-check)
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Export OpenAPI spec
+        env:
+          SWAGGER_ENABLED: 'true'
+          OPENAPI_EXPORT_MODE: 'true'
+          REDIS_ENABLED: 'false'
+          PUBLIC_API_BASE_URL: 'http://localhost:5000'
+        run: npm run openapi:export
+
+      - name: Generate OpenAPI TypeScript types
+        run: npm run openapi:types
+
+      - name: Upload OpenAPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: studybond-openapi
+          path: |
+            artifacts/openapi/openapi.json
+            artifacts/openapi/openapi-types.d.ts
+
+      - name: Unit tests
+        run: npm test

@@ -1,64 +1,32 @@
-// ============================================
-// EXAMS MODULE TYPES
-// ============================================
-// TypeScript interfaces for type safety across the module
-
+import type { ExamErrorCode } from './exams.constants';
 import { Subject, ExamType, ExamStatus } from './exams.constants';
-
-// ============================================
-// REQUEST TYPES
-// ============================================
-
-/**
- * Configuration for starting a new exam
- */
 export interface StartExamInput {
-    /** Type of exam (REAL_PAST_QUESTION, PRACTICE, etc.) */
-    examType: ExamType;
-
-    /** Selected subjects (1-5 subjects) */
+    examType?: ExamType;
+    institutionCode?: string;
     subjects: Subject[];
 }
 
-/**
- * Single answer in a submission
- */
+export interface StartDailyChallengeInput {
+    subjects: Subject[];
+}
+
 export interface AnswerInput {
-    /** Question ID being answered */
     questionId: number;
-
-    /** User's selected answer (A, B, C, or D) */
     answer: string | null;
-
-    /** Time spent on this question in seconds */
     timeSpentSeconds?: number;
 }
 
-/**
- * Full exam submission payload
- */
 export interface SubmitExamInput {
-    /** Array of answers for all questions */
     answers: AnswerInput[];
 }
 
-/**
- * Query parameters for exam history
- */
 export interface ExamHistoryQuery {
     page?: number;
     limit?: number;
+    institutionCode?: string;
     examType?: ExamType;
     status?: ExamStatus;
 }
-
-// ============================================
-// RESPONSE TYPES
-// ============================================
-
-/**
- * Question as sent to client (without correct answer)
- */
 export interface QuestionForClient {
     id: number;
     questionText: string;
@@ -80,13 +48,13 @@ export interface QuestionForClient {
     topic: string | null;
 }
 
-/**
- * Active exam session response
- */
 export interface ExamSessionResponse {
     examId: number;
     examType: ExamType;
     subjects: string[];
+    sessionNumber: number;
+    displayNameLong: string;
+    displayNameShort: string;
     totalQuestions: number;
     timeAllowedSeconds: number;
     startedAt: string;
@@ -94,9 +62,7 @@ export interface ExamSessionResponse {
     questions: QuestionForClient[];
 }
 
-/**
- * Question with answer details (for completed exam review)
- */
+/* Question with answer details (for completed exam review) */
 export interface QuestionWithAnswer extends QuestionForClient {
     correctAnswer: string;
     userAnswer: string | null;
@@ -109,13 +75,14 @@ export interface QuestionWithAnswer extends QuestionForClient {
     };
 }
 
-/**
- * Exam result after submission
- */
+/* Exam result after submission */
 export interface ExamResultResponse {
     examId: number;
     examType: ExamType;
     subjects: string[];
+    sessionNumber: number;
+    displayNameLong: string;
+    displayNameShort: string;
     totalQuestions: number;
     score: number;
     percentage: number;
@@ -134,13 +101,14 @@ export interface ExamResultResponse {
     };
 }
 
-/**
- * Exam summary for history list
- */
+/* Exam summary for history list */
 export interface ExamSummary {
     id: number;
     examType: ExamType;
     subjects: string[];
+    sessionNumber: number;
+    displayNameLong: string;
+    displayNameShort: string;
     totalQuestions: number;
     score: number;
     percentage: number;
@@ -154,9 +122,7 @@ export interface ExamSummary {
     timeTakenSeconds: number | null;
 }
 
-/**
- * Paginated exam history response
- */
+/* Paginated exam history response */
 export interface ExamHistoryResponse {
     exams: ExamSummary[];
     pagination: {
@@ -173,13 +139,10 @@ export interface ExamHistoryResponse {
     };
 }
 
-// ============================================
-// INTERNAL TYPES (Service Layer)
-// ============================================
 
-/**
- * Question as stored in database with additional metadata
- */
+// INTERNAL TYPES (Service Layer)
+
+/* Question as stored in database with additional metadata */
 export interface QuestionWithMeta {
     id: number;
     questionText: string;
@@ -198,14 +161,13 @@ export interface QuestionWithMeta {
     correctAnswer: string;
     subject: string;
     topic: string | null;
+    difficultyLevel: string | null;
+    parentQuestionId: number | null;
     questionType: string;
     parentQuestionText?: string | null;
     parentQuestionImageUrl?: string | null;
 }
 
-/**
- * SP calculation result
- */
 export interface SPCalculation {
     rawScore: number;
     percentage: number;
@@ -213,18 +175,46 @@ export interface SPCalculation {
     spEarned: number;
 }
 
+/* ---- Topic Blueprint Types ---- */
+
 /**
- * User eligibility check result
+ * Single entry in a topic blueprint defining how many questions
+ * from a specific topic should appear in an exam for a given subject.
+ *
+ * The special key `__other__` captures questions whose topic does not
+ * match any named entry in the blueprint (including null topics).
  */
-export interface EligibilityCheck {
-    canTakeExam: boolean;
-    reason?: string;
-    errorCode?: string;
+export interface TopicBlueprintEntry {
+    /** Target number of questions from this topic */
+    quota: number;
+    /** When true, pick passage groups (parentQuestionId) as atomic units */
+    requirePassageGroup?: boolean;
 }
 
 /**
- * Retake eligibility result
+ * Per-subject mapping of topic names to their blueprint entries.
+ * Example:
+ * ```json
+ * {
+ *   "English": {
+ *     "Comprehension": { "quota": 5, "requirePassageGroup": true },
+ *     "Concord": { "quota": 3 },
+ *     "__other__": { "quota": 5 }
+ *   }
+ * }
+ * ```
  */
+export type TopicBlueprint = Record<string, Record<string, TopicBlueprintEntry>>;
+
+export interface EligibilityCheck {
+    canTakeExam: boolean;
+    reason?: string;
+    errorCode?: ExamErrorCode;
+    creditsUsed?: number;
+    creditsRemaining?: number;
+    requestedCredits?: number;
+}
+
 export interface RetakeEligibility {
     canRetake: boolean;
     attemptNumber: number;

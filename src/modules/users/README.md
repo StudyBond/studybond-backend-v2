@@ -4,7 +4,9 @@
 This module handles everything related to user profile management, including:
 - Viewing user profile information
 - Updating profile settings
-- Viewing user statistics (SP, streaks, exam counts)
+- Viewing user statistics (Study Points (SP), streaks, exam counts)
+- Viewing active sessions and registered premium devices in read-only mode
+- Changing the current account password safely
 - Account deletion with cascade cleanup
 
 It is designed to be **secure** (all endpoints require authentication), **efficient**, and **easy to maintain**.
@@ -40,16 +42,13 @@ When returning user data, we **exclude sensitive fields**:
 - ✅ `id`, `email`, `fullName`, `role`, etc. - Safe to expose
 
 ### 3. Cascading Account Deletion
-When a user deletes their account, we clean up **all associated data** in order:
-1. AI Explanation Requests
-2. Exam Answers
-3. Exams
-4. Bookmarked Questions
-5. User Sessions
-6. User Devices
-7. Finally, the User record
+When a user deletes their account, we:
+1. Require the current password.
+2. Block self-service deletion for admin or historically privileged accounts.
+3. Clean up user-owned collaboration/session records that would otherwise violate current foreign-key rules.
+4. Delete the user inside one transaction.
 
-This uses a Prisma transaction to ensure atomicity.
+This is built against the current larger backend, not the original smaller schema.
 
 ---
 
@@ -66,15 +65,15 @@ Returns the authenticated user's profile information.
 {
   "id": 1,
   "email": "user@example.com",
-  "fullName": "John Doe",
+  "fullName": "Adedolapo Chibueze",
   "isVerified": true,
   "role": "USER",
   "aspiringCourse": "Medicine",
-  "targetScore": 350,
+  "targetScore": 90,
   "isPremium": false,
   "emailUnsubscribed": false,
-  "createdAt": "2024-01-15T10:30:00.000Z",
-  "updatedAt": "2024-01-20T14:45:00.000Z"
+  "createdAt": "2026-01-15T10:30:00.000Z",
+  "updatedAt": "2026-01-20T14:45:00.000Z"
 }
 ```
 
@@ -91,7 +90,7 @@ Updates the authenticated user's profile. All fields are optional.
 {
   "fullName": "Jane Doe",
   "aspiringCourse": "Engineering",
-  "targetScore": 380,
+  "targetScore": 88,
   "emailUnsubscribed": true
 }
 ```
@@ -115,7 +114,13 @@ Returns the authenticated user's study statistics.
   "longestStreak": 12,
   "realExamsCompleted": 8,
   "hasTakenFreeExam": true,
-  "aiExplanationsUsedToday": 2
+  "aiExplanationsUsedToday": 2,
+  "completedExams": 14,
+  "abandonedExams": 1,
+  "inProgressExams": 0,
+  "bookmarkedQuestions": 7,
+  "activeSessions": 2,
+  "registeredPremiumDevices": 1
 }
 ```
 
@@ -127,16 +132,103 @@ Returns the authenticated user's study statistics.
 
 Permanently deletes the authenticated user's account and all associated data.
 
+**Input (Body):**
+```json
+{
+  "password": "CurrentPassword123!"
+}
+```
+
 **Response (200):**
 ```json
 {
   "success": true,
-  "message": "Account deleted successfully",
-  "deletedAt": "2024-01-28T12:00:00.000Z"
+  "message": "Your account and personal study data were deleted successfully.",
+  "deletedAt": "2026-01-28T12:00:00.000Z"
 }
 ```
 
 ⚠️ **Warning:** This action is irreversible!
+
+---
+
+### 5. Get Security Overview
+**URL:** `GET /api/users/security`  
+**Auth:** Required (Bearer Token)
+
+Returns the authenticated user's current active sessions and registered premium devices.
+
+This endpoint is intentionally **read-only**. Users can inspect their security state from settings, but they cannot remove sessions or registered premium devices from this flow.
+
+**Response (200):**
+```json
+{
+  "deviceAccessMode": "PREMIUM",
+  "currentSessionId": "6a8d6c89-1f8f-4c8f-a6d2-b2e6f95f0c9c",
+  "currentDeviceId": "premium-device-a",
+  "activeSessions": [
+    {
+      "sessionId": "6a8d6c89-1f8f-4c8f-a6d2-b2e6f95f0c9c",
+      "deviceId": "premium-device-a",
+      "deviceName": "Chrome on Pixel 8",
+      "userAgent": "Mozilla/5.0 ...",
+      "createdAt": "2026-03-11T08:00:00.000Z",
+      "expiresAt": "2026-04-10T08:00:00.000Z",
+      "lastLoginAt": "2026-03-11T08:00:00.000Z",
+      "isCurrent": true,
+      "isRegisteredPremiumDevice": true,
+      "registrationMethod": "PREMIUM_FIRST_LOGIN"
+    }
+  ],
+  "registeredPremiumDevices": [
+    {
+      "deviceId": "premium-device-a",
+      "deviceName": "Chrome on Pixel 8",
+      "userAgent": "Mozilla/5.0 ...",
+      "createdAt": "2026-03-11T08:00:00.000Z",
+      "verifiedAt": "2026-03-11T08:01:00.000Z",
+      "lastLoginAt": "2026-03-11T08:00:00.000Z",
+      "isCurrent": true,
+      "isActive": true,
+      "registrationMethod": "PREMIUM_FIRST_LOGIN"
+    }
+  ]
+}
+```
+
+---
+
+### 6. Change Password
+**URL:** `PATCH /api/users/password`  
+**Auth:** Required (Bearer Token)
+
+Changes the authenticated user's password.
+
+Behavior:
+1. Verifies the current password.
+2. Rejects password reuse.
+3. Signs out other active sessions while keeping the current session active.
+4. Clears any pending password-reset token state.
+5. Enforces a daily password change cap.
+6. Schedules a delayed security notice email instead of sending multiple immediate alerts if the password is changed repeatedly in a short window.
+
+**Input (Body):**
+```json
+{
+  "currentPassword": "OldPassword123!",
+  "newPassword": "NewPassword456!"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Your password was changed successfully. Other active sessions were signed out.",
+  "changedAt": "2026-03-11T09:30:00.000Z",
+  "invalidatedSessions": 2
+}
+```
 
 ---
 

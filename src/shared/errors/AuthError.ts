@@ -1,11 +1,8 @@
-export class AuthError extends Error {
-    public statusCode: number;
-    public code: string;
+import { AppError } from './AppError';
 
-    constructor(message: string, statusCode = 401, code = 'AUTH_ERROR') {
-        super(message);
-        this.statusCode = statusCode;
-        this.code = code;
+export class AuthError extends AppError {
+    constructor(message: string, statusCode = 401, code = 'AUTH_ERROR', details?: unknown) {
+        super(message, statusCode, code, details);
         Object.setPrototypeOf(this, AuthError.prototype);
     }
 }

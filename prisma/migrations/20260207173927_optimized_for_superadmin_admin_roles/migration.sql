@@ -1,9 +1,4 @@
-/*
-  Warnings:
 
-  - The values [MODERATOR] on the enum `Role` will be removed. If these variants are still used in the database, this will fail.
-
-*/
 -- CreateEnum
 CREATE TYPE "AdminAuditAction" AS ENUM ('ROLE_PROMOTED', 'ROLE_DEMOTED', 'ROLE_PROMOTION_ATTEMPT_FAILED', 'ROLE_DEMOTION_ATTEMPT_FAILED', 'USER_BANNED', 'USER_UNBANNED', 'DEVICE_REMOVED', 'QUESTION_DELETED', 'QUESTION_EDITED', 'EMAIL_SYSTEM_TOGGLED', 'REPORT_RESOLVED', 'UNAUTHORIZED_ACTION_ATTEMPT');
 

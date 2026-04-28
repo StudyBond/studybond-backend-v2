@@ -1,41 +1,23 @@
-// ============================================
-// EXAMS MODULE VALIDATION SCHEMAS
-// ============================================
-// Zod schemas for request validation
-// Strict validation with helpful error messages
-
 import { z } from 'zod';
 import { SUBJECTS, EXAM_TYPES, EXAM_STATUS, PAGINATION } from './exams.constants';
+import { optionalInstitutionCodeSchema } from '../../shared/institutions/schema';
 
-// ============================================
-// SHARED VALIDATORS
-// ============================================
-
-/** Valid answer options */
 const answerOptions = ['A', 'B', 'C', 'D', 'E'] as const;
 
-/** Subject validator */
 const subjectValidator = z.enum(SUBJECTS, {
     errorMap: () => ({ message: `Invalid subject. Must be one of: ${SUBJECTS.join(', ')}` })
-} as any); // Cast to any to avoid errorMap type issue
+} as any);
 
-/** Exam type validator */
 const examTypeValidator = z.enum(
-    [EXAM_TYPES.REAL_PAST_QUESTION, EXAM_TYPES.PRACTICE] as const,
+    [EXAM_TYPES.REAL_PAST_QUESTION, EXAM_TYPES.PRACTICE, EXAM_TYPES.MIXED, EXAM_TYPES.DAILY_CHALLENGE] as const,
     {
-        errorMap: () => ({ message: 'Invalid exam type. Must be REAL_PAST_QUESTION or PRACTICE' })
-    } as any // Cast to any to avoid errorMap type issue
+        errorMap: () => ({ message: 'Invalid exam type. Must be REAL_PAST_QUESTION, PRACTICE, MIXED, or DAILY_CHALLENGE' })
+    } as any
 );
 
-// ============================================
-// REQUEST SCHEMAS
-// ============================================
-
-/**
- * Schema for starting a new exam
- */
 export const startExamSchema = z.object({
-    examType: examTypeValidator,
+    institutionCode: optionalInstitutionCodeSchema,
+    examType: examTypeValidator.optional(),
 
     subjects: z
         .array(subjectValidator)
@@ -46,21 +28,36 @@ export const startExamSchema = z.object({
             'Duplicate subjects are not allowed'
         )
 }).strict().superRefine((data, ctx) => {
-    // Enforce English mandatory for REAL_PAST_QUESTION (Full Exam)
-    if (data.examType === EXAM_TYPES.REAL_PAST_QUESTION) {
-        if (!data.subjects.includes('English')) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: "English Language is mandatory for Full Exams",
-                path: ["subjects"]
-            });
-        }
+    // English is mandatory only for full exams (4-subject mode), regardless of exam type.
+    const isFullExam = data.subjects.length === 4;
+    if (isFullExam && !data.subjects.includes('English')) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'English Language is mandatory for full exams.',
+            path: ['subjects']
+        });
+    }
+
+    if (isFullExam && data.examType === EXAM_TYPES.MIXED) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Full exams must be either REAL_PAST_QUESTION or PRACTICE. Mixed mode is only available for 1-3 subject solo exams.',
+            path: ['examType']
+        });
     }
 });
 
-/**
- * Schema for a single answer
- */
+export const startDailyChallengeSchema = z.object({
+    subjects: z
+        .array(subjectValidator)
+        .length(4, 'Exactly 4 subjects are required for the daily challenge')
+        .refine(
+            (subjects) => new Set(subjects).size === subjects.length,
+            'Duplicate subjects are not allowed'
+        )
+}).strict();
+
+
 export const answerSchema = z.object({
     questionId: z
         .number({ message: 'Question ID is required' } as any)
@@ -81,18 +78,15 @@ export const answerSchema = z.object({
         .number()
         .int()
         .min(0, 'Time spent cannot be negative')
-        .max(7200, 'Time spent cannot exceed exam duration')
+        .max(5400, 'Time spent cannot exceed exam duration')
         .optional()
         .default(0)
 }).strict();
 
-/**
- * Schema for submitting exam answers
- */
+
 export const submitExamSchema = z.object({
     answers: z
         .array(answerSchema)
-        .min(1, 'At least one answer is required')
         .refine(
             (answers) => {
                 const ids = answers.map(a => a.questionId);
@@ -102,37 +96,34 @@ export const submitExamSchema = z.object({
         )
 }).strict();
 
-/**
- * Schema for exam ID path parameter
- */
+/* Schema for exam ID path parameter */
 export const examIdParamSchema = z.object({
     examId: z
-        .string()
-        .regex(/^\d+$/, 'Exam ID must be a number')
-        .transform(Number)
-        .refine((val) => val > 0, 'Exam ID must be positive')
+        .coerce
+        .number()
+        .int('Exam ID must be an integer')
+        .positive('Exam ID must be positive')
 }).strict();
 
-/**
- * Schema for exam history query parameters
- */
+/* Schema for exam history query parameters */
 export const historyQuerySchema = z.object({
+    institutionCode: optionalInstitutionCodeSchema,
     page: z
-        .string()
-        .regex(/^\d+$/, 'Page must be a number')
-        .transform(Number)
+        .coerce
+        .number()
+        .int('Page must be an integer')
         .refine((val) => val >= 1, 'Page must be at least 1')
         .optional(),
 
     limit: z
-        .string()
-        .regex(/^\d+$/, 'Limit must be a number')
-        .transform(Number)
+        .coerce
+        .number()
+        .int('Limit must be an integer')
         .refine((val) => val >= 1 && val <= PAGINATION.MAX_LIMIT, `Limit must be between 1 and ${PAGINATION.MAX_LIMIT}`)
         .optional(),
 
     examType: z
-        .enum([EXAM_TYPES.REAL_PAST_QUESTION, EXAM_TYPES.PRACTICE, EXAM_TYPES.ONE_V_ONE_DUEL, EXAM_TYPES.GROUP_COLLAB])
+        .enum([EXAM_TYPES.REAL_PAST_QUESTION, EXAM_TYPES.PRACTICE, EXAM_TYPES.MIXED, EXAM_TYPES.ONE_V_ONE_DUEL, EXAM_TYPES.GROUP_COLLAB, EXAM_TYPES.DAILY_CHALLENGE])
         .optional(),
 
     status: z
@@ -140,35 +131,17 @@ export const historyQuerySchema = z.object({
         .optional()
 }).strict();
 
-// ============================================
 // TYPE EXPORTS (inferred from schemas)
-// ============================================
+
+export const reportViolationSchema = z.object({
+    violationType: z.enum(['tab_switch', 'screenshot', 'copy_paste', 'right_click', 'devtools']),
+    metadata: z.record(z.string(), z.any()).optional()
+}).strict();
 
 export type StartExamInput = z.infer<typeof startExamSchema>;
+export type StartDailyChallengeInput = z.infer<typeof startDailyChallengeSchema>;
 export type AnswerInput = z.infer<typeof answerSchema>;
 export type SubmitExamInput = z.infer<typeof submitExamSchema>;
 export type ExamIdParam = z.infer<typeof examIdParamSchema>;
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
-
-// ============================================
-// VALIDATION HELPERS
-// ============================================
-
-/**
- * Safe parse with formatted error messages
- */
-export function validateStartExam(data: unknown) {
-    return startExamSchema.safeParse(data);
-}
-
-export function validateSubmitExam(data: unknown) {
-    return submitExamSchema.safeParse(data);
-}
-
-export function validateExamId(params: unknown) {
-    return examIdParamSchema.safeParse(params);
-}
-
-export function validateHistoryQuery(query: unknown) {
-    return historyQuerySchema.safeParse(query);
-}
+export type ReportViolationInput = z.infer<typeof reportViolationSchema>;

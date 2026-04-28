@@ -1,18 +1,20 @@
-
-// ============================================
-// QUESTIONS CONTROLLER
-// ============================================
 // HTTP request handlers for question endpoints
 
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { QuestionsService } from './questions.service';
 import {
+    bulkUploadQuerySchema,
     createQuestionSchema,
+    questionAssetKindParamSchema,
     updateQuestionSchema,
     questionFilterSchema,
     questionIdParamSchema
 } from './questions.schema';
-import { CreateQuestionInput, UpdateQuestionInput, QuestionFilterQuery } from './questions.types';
+import { BulkQuestionUploadQuery, CreateQuestionInput, UpdateQuestionInput, QuestionFilterQuery } from './questions.types';
+import { parseWithSchema } from '../../shared/utils/validation';
+import { QuestionAssetKind } from './question-assets';
+import { AppError } from '../../shared/errors/AppError';
+import { parseCSVStream, parseExcel, processBulkUpload } from './bulk-upload';
 
 export class QuestionsController {
     private service: QuestionsService;
@@ -25,7 +27,7 @@ export class QuestionsController {
         request: FastifyRequest<{ Body: CreateQuestionInput }>,
         reply: FastifyReply
     ) => {
-        const input = createQuestionSchema.parse(request.body);
+        const input = parseWithSchema(createQuestionSchema, request.body, 'Invalid question payload');
         const question = await this.service.createQuestion(input as CreateQuestionInput);
         return reply.code(201).send(question);
     };
@@ -34,7 +36,7 @@ export class QuestionsController {
         request: FastifyRequest<{ Querystring: QuestionFilterQuery }>,
         reply: FastifyReply
     ) => {
-        const query = questionFilterSchema.parse(request.query);
+        const query = parseWithSchema(questionFilterSchema, request.query, 'Invalid question query parameters');
         const result = await this.service.getQuestions(query);
         return reply.send(result);
     };
@@ -43,7 +45,7 @@ export class QuestionsController {
         request: FastifyRequest<{ Params: { id: number } }>,
         reply: FastifyReply
     ) => {
-        const { id } = questionIdParamSchema.parse(request.params);
+        const { id } = parseWithSchema(questionIdParamSchema, request.params, 'Invalid question ID');
         const question = await this.service.getQuestionById(id);
         return reply.send(question);
     };
@@ -52,8 +54,8 @@ export class QuestionsController {
         request: FastifyRequest<{ Params: { id: number }, Body: UpdateQuestionInput }>,
         reply: FastifyReply
     ) => {
-        const { id } = questionIdParamSchema.parse(request.params);
-        const input = updateQuestionSchema.parse(request.body);
+        const { id } = parseWithSchema(questionIdParamSchema, request.params, 'Invalid question ID');
+        const input = parseWithSchema(updateQuestionSchema, request.body, 'Invalid question update payload');
         const question = await this.service.updateQuestion(id, input as UpdateQuestionInput);
         return reply.send(question);
     };
@@ -62,20 +64,47 @@ export class QuestionsController {
         request: FastifyRequest<{ Params: { id: number } }>,
         reply: FastifyReply
     ) => {
-        const { id } = questionIdParamSchema.parse(request.params);
+        const { id } = parseWithSchema(questionIdParamSchema, request.params, 'Invalid question ID');
         await this.service.deleteQuestion(id);
         return reply.code(204).send();
     };
 
-
-    bulkUpload = async (
-        request: FastifyRequest,
+    uploadQuestionAsset = async (
+        request: FastifyRequest<{ Params: { kind: string } }>,
         reply: FastifyReply
     ) => {
-        // Dynamic import to avoid circular dep if any (optional, but keeping style)
-        const { parseCSVStream, parseExcel, processBulkUpload } = await import('./bulk-upload');
-        const { AppError } = await import('../../shared/errors/AppError');
+        const { kind } = parseWithSchema(questionAssetKindParamSchema, request.params, 'Invalid question asset type');
+        const file = await request.file();
 
+        if (!file) {
+            throw new AppError('No image file uploaded', 400, 'VALIDATION_ERROR');
+        }
+
+        if (!file.mimetype?.startsWith('image/')) {
+            throw new AppError('Only image uploads are allowed for question assets.', 400, 'VALIDATION_ERROR');
+        }
+
+        const buffer = await file.toBuffer();
+        const asset = await this.service.uploadQuestionAsset({
+            kind: kind as QuestionAssetKind,
+            buffer,
+            filename: file.filename,
+            contentType: file.mimetype
+        });
+
+        return reply.code(201).send(asset);
+    };
+
+
+    bulkUpload = async (
+        request: FastifyRequest<{ Querystring: BulkQuestionUploadQuery }>,
+        reply: FastifyReply
+    ) => {
+
+
+
+
+        const query = parseWithSchema(bulkUploadQuerySchema, request.query, 'Invalid bulk upload query parameters');
         const file = await request.file();
 
         if (!file) {
@@ -88,10 +117,9 @@ export class QuestionsController {
         let questions;
 
         if (filename.endsWith('.csv')) {
-            // Pass the stream directly
             questions = await parseCSVStream(file.file);
         } else if (filename.endsWith('.xlsx') || filename.endsWith('.xls')) {
-            // Excel needs buffer, verify size limit first if possible
+            // Excel needs buffer, we should verify size limit first if possible
             const buffer = await file.toBuffer();
             questions = parseExcel(buffer);
         } else {
@@ -102,12 +130,8 @@ export class QuestionsController {
             throw new AppError('File contains no data rows', 400);
         }
 
-        if (questions.length === 0) {
-            throw new AppError('File contains no data rows', 400);
-        }
+        const result = await processBulkUpload(questions, query);
 
-        const result = await processBulkUpload(questions);
-
-        return reply.code(result.success ? 201 : 400).send(result);
+        return reply.code(result.success ? 201 : 422).send(result);
     };
 }

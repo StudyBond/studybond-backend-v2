@@ -28,18 +28,31 @@ enum AdminAuditAction {
   USER_BANNED
   USER_UNBANNED
   DEVICE_REMOVED
+  PREMIUM_GRANTED
+  PREMIUM_EXTENDED
+  PREMIUM_REVOKED
+  STEP_UP_CHALLENGE_REQUESTED
+  STEP_UP_CHALLENGE_VERIFIED
+  STEP_UP_CHALLENGE_FAILED
   QUESTION_DELETED
   QUESTION_EDITED
   EMAIL_SYSTEM_TOGGLED
+  REPORT_REVIEWED
   REPORT_RESOLVED
+  REPORT_HARD_DELETED
   UNAUTHORIZED_ACTION_ATTEMPT
+  EXAM_CHEAT_VIOLATION
+  FREE_EXAM_CREDITS_RESET
+  FREE_EXAM_QUESTIONS_TOGGLED
 }
 
 enum ExamType {
   REAL_PAST_QUESTION
   PRACTICE
+  MIXED
   ONE_V_ONE_DUEL
   GROUP_COLLAB
+  DAILY_CHALLENGE
 }
 
 enum ExamStatus {
@@ -54,6 +67,40 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
+enum PaymentProvider {
+  PAYSTACK
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  ABANDONED
+  REVERSED
+}
+
+enum PremiumEntitlementKind {
+  MANUAL
+  PROMOTIONAL
+  CORRECTIVE
+}
+
+enum PremiumEntitlementStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum DeviceAccessMode {
+  FREE
+  PREMIUM
+}
+
+enum DeviceRegistrationMethod {
+  PREMIUM_FIRST_LOGIN
+  PREMIUM_OTP
+}
+
 enum SessionStatus {
   WAITING
   IN_PROGRESS
@@ -61,11 +108,45 @@ enum SessionStatus {
   CANCELLED
 }
 
-enum NotificationType {
-  TIME_ALERT
-  EMOJI_REACTION
+enum CollaborationSessionType {
+  ONE_V_ONE_DUEL
+  GROUP_COLLAB
+}
+
+enum CollaborationQuestionSource {
+  REAL_PAST_QUESTION
+  PRACTICE
+  MIXED
+}
+
+enum InstitutionQuestionSourceMode {
+  REAL_PAST_QUESTION
+  PRACTICE
+  MIXED
+}
+
+enum QuestionPool {
+  FREE_EXAM
+  REAL_BANK
+  PRACTICE
+}
+
+enum ParticipantState {
+  JOINED
+  READY
+  DISCONNECTED
   FINISHED
-  PROGRESS_UPDATE
+}
+
+enum IdempotencyState {
+  IN_PROGRESS
+  COMPLETED
+  FAILED_RETRYABLE
+  FAILED_FINAL
+}
+
+enum AdminStepUpPurpose {
+  SUPERADMIN_SENSITIVE_ACTION
 }
 
 enum EmailType {
@@ -75,7 +156,14 @@ enum EmailType {
   WELCOME_EMAIL
   VERIFICATION_OTP
   DEVICE_VERIFICATION_OTP
+  ADMIN_STEP_UP_OTP
   PASSWORD_RESET_OTP
+  PASSWORD_CHANGED_ALERT
+}
+
+enum EmailProvider {
+  BREVO
+  RESEND
 }
 
 enum ReportIssueType {
@@ -113,9 +201,19 @@ enum AuditAction {
   SUBSCRIPTION_UPGRADED
   SUBSCRIPTION_CANCELLED
   SUBSCRIPTION_EXPIRED
+  PREMIUM_GRANTED_MANUALLY
+  PREMIUM_EXTENDED_MANUALLY
+  PREMIUM_REVOKED_MANUALLY
 
   ADMIN_DEVICE_RESET
   ADMIN_FORCE_LOGOUT
+  LEADERBOARD_SIGNAL_FLAGGED
+  EXAM_CHEAT_VIOLATION
+}
+
+enum AchievementKey {
+  STREAK_7_DAY_STARTER
+  COLLABORATION_30_COMPLETIONS
 }
 
 
@@ -128,6 +226,7 @@ model User {
   email                 String    @unique
   passwordHash          String
   fullName              String
+  targetInstitutionId   Int?
 
   // === ACCOUNT VERIFICATION ===
   isVerified            Boolean   @default(false)
@@ -137,6 +236,7 @@ model User {
   // === SECURITY & PASSWORD RESET CONTROLS ===
   passwordResetToken    String?   // Stores the hashed OTP
   passwordResetExpires  DateTime? // When the OTP expires
+  passwordResetAttemptCount Int   @default(0)
   lastPasswordChange    DateTime? // To enforce the 15-day rule
   
   otpRequestCount       Int       @default(0) // Tracks daily attempts (Max 3)
@@ -149,17 +249,22 @@ model User {
   aspiringCourse        String?
   targetScore           Int?
 
-  // === SCORE SYSTEM ===
+  // === STUDY POINTS SYSTEM ===
   totalSp               Int       @default(0)
   weeklySp              Int       @default(0)
 
   // === PREMIUM STATUS ===
   isPremium             Boolean   @default(false)
   subscriptionEndDate   DateTime?
+  deviceAccessMode      DeviceAccessMode @default(FREE)
+  authPolicyVersion     Int       @default(0)
 
   // === FREE USER LIMITS ===
   hasTakenFreeExam      Boolean   @default(false)
+  freeSubjectCreditsUsed Int     @default(0)
+  freeSubjectsTaken     String[] @default([])
   realExamsCompleted    Int       @default(0)
+  completedCollaborationExams Int @default(0)
 
   // === AI USAGE ===
   aiExplanationsUsedToday Int      @default(0)
@@ -169,6 +274,7 @@ model User {
   currentStreak         Int       @default(0)
   longestStreak         Int       @default(0)
   lastActivityDate      DateTime? @db.Date
+  streakFreezesAvailable Int      @default(0)
 
   // === EMAIL CONTROL ===
   lastStreakReminder    DateTime? @db.Date
@@ -192,22 +298,42 @@ model User {
 
   exams                   Exam[]
   subscription            Subscription?
+  subscriptionPayments    SubscriptionPayment[]
   bookmarkedQuestions     BookmarkedQuestion[]
   studyActivities         StudyActivity[]
   emailLogs               EmailLog[]
   hostedSessions          CollaborationSession[] @relation("SessionHost")
   participations          SessionParticipant[]
-  sentNotifications       CollaborationNotification[]
   aiRequests              AIExplanationRequest[]
   weeklyLeaderboardEntries WeeklyLeaderboard[]
   questionReports         QuestionReport[]
+  reviewedQuestionReports QuestionReport[] @relation("QuestionReportReviewedBy")
+  resolvedQuestionReports QuestionReport[] @relation("QuestionReportResolvedBy")
   auditLogs               AuditLog[]
   adminAuditLogs          AdminAuditLog[]
+  examSessionCounters     ExamSessionCounter[]
+  collaborationSessionCounters CollaborationSessionCounter[]
+  idempotencyRecords      IdempotencyRecord[]
+  adminStepUpChallenges   AdminStepUpChallenge[]
+  leaderboardProjectionEvents LeaderboardProjectionEvent[]
+  leaderboardIntegritySignals LeaderboardIntegritySignal[]
+  premiumEntitlements     PremiumEntitlement[] @relation("PremiumEntitlementUser")
+  grantedPremiumEntitlements PremiumEntitlement[] @relation("PremiumEntitlementGrantedBy")
+  revokedPremiumEntitlements PremiumEntitlement[] @relation("PremiumEntitlementRevokedBy")
+  achievements            UserAchievement[]
+  institutionStats        UserInstitutionStats[]
+  targetInstitution       Institution? @relation("UserTargetInstitution", fields: [targetInstitutionId], references: [id], onDelete: SetNull)
 
   @@index([email])
+  @@index([targetInstitutionId])
   @@index([totalSp])
   @@index([weeklySp])
+  @@index([weeklySp, totalSp, id])
+  @@index([totalSp, weeklySp, id])
   @@index([isPremium])
+  @@index([currentStreak, lastActivityDate])
+  @@index([lastStreakReminder])
+  @@index([createdAt])
 }
 
 // ============================================
@@ -221,6 +347,13 @@ model UserDevice {
   deviceId     String
   deviceName   String
   userAgent    String
+  fingerprintHash String?
+  fingerprintData Json?
+  lastIpAddress String?
+  verificationTokenHash String?
+  verificationTokenExpiresAt DateTime?
+  verifiedAt    DateTime?
+  registrationMethod DeviceRegistrationMethod?
 
   isVerified   Boolean  @default(false)
   isActive     Boolean  @default(false)
@@ -232,6 +365,8 @@ model UserDevice {
 
   @@unique([userId, deviceId])
   @@index([userId])
+  @@index([userId, isVerified])
+  @@index([userId, fingerprintHash])
 }
 
 // ============================================
@@ -242,27 +377,148 @@ model UserSession {
   id           String    @id @default(uuid())
   userId       Int
   deviceId     String
+  tokenVersion Int       @default(0)
+  authPolicyVersion Int  @default(0)
 
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   expiresAt    DateTime?
 
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adminStepUpChallenges AdminStepUpChallenge[]
 
   @@index([userId])
   @@index([deviceId])
+  @@index([isActive, expiresAt])
+  @@index([userId, isActive, expiresAt])
+  @@index([userId, authPolicyVersion, isActive])
+}
+
+model AdminStepUpChallenge {
+  id                     String             @id @default(uuid())
+  actorId                Int
+  sessionId              String
+  purpose                AdminStepUpPurpose
+  otpHash                String?
+  otpExpiresAt           DateTime?
+  verifiedTokenHash      String?
+  verifiedTokenExpiresAt DateTime?
+  verifiedAt             DateTime?
+  failedAttempts         Int                @default(0)
+  lastUsedAt             DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  actor                  User               @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  session                UserSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([actorId, sessionId, purpose])
+  @@index([actorId, purpose, createdAt])
+  @@index([sessionId, purpose, verifiedTokenExpiresAt])
+  @@index([verifiedAt, otpExpiresAt])
 }
 
 // ============================================
-// 4. QUESTION MODEL
+// 4. INSTITUTION FOUNDATION
+// ============================================
+
+model Institution {
+  id        Int                     @id @default(autoincrement())
+  code      String                  @unique
+  name      String
+  slug      String                  @unique
+  isActive  Boolean                 @default(true)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  examConfigs InstitutionExamConfig[]
+  questions   Question[]
+  exams       Exam[]
+  collaborationSessions CollaborationSession[]
+  userStats UserInstitutionStats[]
+  weeklyLeaderboardEntries WeeklyLeaderboard[]
+  leaderboardProjectionEvents LeaderboardProjectionEvent[]
+  leaderboardIntegritySignals LeaderboardIntegritySignal[]
+  targetUsers User[] @relation("UserTargetInstitution")
+}
+
+model InstitutionExamConfig {
+  id                           Int                          @id @default(autoincrement())
+  institutionId                Int
+  trackCode                    String                       @default("POST_UTME")
+  trackName                    String                       @default("Post-UTME")
+  isActive                     Boolean                      @default(true)
+  questionsPerSubject          Int
+  fullExamQuestions            Int
+  maxSubjects                  Int
+  singleSubjectDurationSeconds Int
+  twoSubjectDurationSeconds    Int
+  threeSubjectDurationSeconds  Int
+  fullExamDurationSeconds      Int
+  collaborationDurationSeconds Int
+  freeRealExamCount            Int
+  freeFullRealTotalAttempts    Int
+  freeQuestionsPerSubject      Int                          @default(25)
+  premiumDailyRealExamLimit    Int
+  collaborationGateRealExams   Int
+  defaultFullExamSource        InstitutionQuestionSourceMode
+  defaultPartialExamSource     InstitutionQuestionSourceMode
+  defaultCollabSource          InstitutionQuestionSourceMode
+  allowMixedPartialExams       Boolean                      @default(true)
+  allowMixedFullExams          Boolean                      @default(false)
+  allowPracticeCollaboration   Boolean                      @default(true)
+  allowMixedCollaboration      Boolean                      @default(true)
+  additionalRules              Json?
+  createdAt                    DateTime                     @default(now())
+  updatedAt                    DateTime                     @updatedAt
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([institutionId, trackCode])
+  @@index([institutionId, isActive])
+}
+
+// ============================================
+// 5. USER INSTITUTION STATS
+// ============================================
+
+model UserInstitutionStats {
+  id                           BigInt      @id @default(autoincrement())
+  userId                       Int
+  institutionId                Int
+  weeklySp                     Int         @default(0)
+  totalSp                      Int         @default(0)
+  realExamsCompleted           Int         @default(0)
+  practiceExamsCompleted       Int         @default(0)
+  completedCollaborationExams  Int         @default(0)
+  lastExamAt                   DateTime?
+  createdAt                    DateTime    @default(now())
+  updatedAt                    DateTime    @updatedAt
+
+  user                         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution                  Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, institutionId])
+  @@index([userId])
+  @@index([institutionId])
+  @@index([institutionId, weeklySp, totalSp, userId])
+  @@index([institutionId, totalSp, weeklySp, userId])
+  @@index([institutionId, realExamsCompleted])
+  @@index([lastExamAt])
+}
+
+// ============================================
+// 6. QUESTION MODEL
 // ============================================
 
 model Question {
   id               Int       @id @default(autoincrement())
+  institutionId    Int?
   questionText     String    @db.Text
 
   hasImage         Boolean   @default(false)
   imageUrl         String?   @db.Text
+  imagePublicId    String?   @db.Text
 
   optionA          String    @db.Text
   optionB          String    @db.Text
@@ -271,10 +527,15 @@ model Question {
   optionE          String?   @db.Text
 
   optionAImageUrl  String?   @db.Text
+  optionAImagePublicId String? @db.Text
   optionBImageUrl  String?   @db.Text
+  optionBImagePublicId String? @db.Text
   optionCImageUrl  String?   @db.Text
+  optionCImagePublicId String? @db.Text
   optionDImageUrl  String?   @db.Text
+  optionDImagePublicId String? @db.Text
   optionEImageUrl  String?   @db.Text
+  optionEImagePublicId String? @db.Text
 
   correctAnswer    String
 
@@ -282,6 +543,9 @@ model Question {
   topic            String?
   difficultyLevel  String?
   questionType     String
+  questionPool     QuestionPool @default(REAL_BANK)
+  isFeaturedFree   Boolean      @default(false)
+  year             Int?
 
   isAiGenerated    Boolean   @default(false)
   parentQuestionId Int?
@@ -293,6 +557,7 @@ model Question {
 
   parentQuestion   Question?  @relation("QuestionVariations", fields: [parentQuestionId], references: [id])
   childQuestions   Question[] @relation("QuestionVariations")
+  institution      Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
   explanation      Explanation?
   examAnswers      ExamAnswer[]
   bookmarks        BookmarkedQuestion[]
@@ -302,10 +567,16 @@ model Question {
   @@index([subject])
   @@index([topic])
   @@index([questionType])
+  @@index([questionPool])
+  @@index([subject, questionPool])
+  @@index([institutionId])
+  @@index([institutionId, subject, questionPool])
+  @@index([institutionId, subject, year])
+  @@index([institutionId, subject, isFeaturedFree])
 }
 
 // ============================================
-// 5. QUESTION REPORT
+// 7. QUESTION REPORT
 // ============================================
 
 model QuestionReport {
@@ -316,19 +587,32 @@ model QuestionReport {
   issueType   ReportIssueType
   description String?        @db.Text
   status      ReportStatus   @default(PENDING)
+  adminNote   String?        @db.Text
+  reviewedAt  DateTime?
+  reviewedByAdminId Int?
+  resolvedAt  DateTime?
+  resolvedByAdminId Int?
 
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id])
-  question    Question @relation(fields: [questionId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  reviewedByAdmin User? @relation("QuestionReportReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+  resolvedByAdmin User? @relation("QuestionReportResolvedBy", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, questionId, issueType])
   @@index([status])
+  @@index([status, createdAt])
   @@index([questionId])
+  @@index([userId, createdAt])
+  @@index([questionId, status, createdAt])
+  @@index([reviewedByAdminId, reviewedAt])
+  @@index([resolvedByAdminId, resolvedAt])
 }
 
 // ============================================
-// 6. EXPLANATION
+// 8. EXPLANATION
 // ============================================
 
 model Explanation {
@@ -336,6 +620,7 @@ model Explanation {
   questionId         Int       @unique
   explanationText    String    @db.Text
   explanationImageUrl String?  @db.Text
+  explanationImagePublicId String? @db.Text
   additionalNotes    String?   @db.Text
   createdAt          DateTime  @default(now())
 
@@ -344,14 +629,17 @@ model Explanation {
 }
 
 // ============================================
-// 7. EXAM
+// 9. EXAM
 // ============================================
 
 model Exam {
   id                    Int       @id @default(autoincrement())
   userId                Int
+  institutionId         Int?
   examType              ExamType
 
+  nameScopeKey          String
+  sessionNumber         Int
   subjectsIncluded      String[]
   totalQuestions        Int
 
@@ -374,6 +662,7 @@ model Exam {
   completedAt           DateTime?
 
   user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution           Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
   examAnswers           ExamAnswer[]
   collaborationSession  CollaborationSession? @relation(fields: [collaborationSessionId], references: [id])
   bookmarkedQuestions   BookmarkedQuestion[]
@@ -382,13 +671,24 @@ model Exam {
   retakes               Exam[]     @relation("ExamRetakes")
 
   @@index([userId])
+  @@index([userId, status])
+  @@index([userId, examType, startedAt])
+  @@index([userId, startedAt])
+  @@index([institutionId])
+  @@index([institutionId, examType, startedAt])
+  @@index([userId, nameScopeKey])
+  @@index([originalExamId, userId])
   @@index([examType])
+  @@index([status, startedAt])
+  @@index([status, completedAt])
   @@index([collaborationSessionId])
   @@index([isRetake])
+  @@unique([userId, nameScopeKey, sessionNumber])
+  @@unique([userId, originalExamId, attemptNumber])
 }
 
 // ============================================
-// 8. EXAM ANSWER
+// 10. EXAM ANSWER
 // ============================================
 
 model ExamAnswer {
@@ -406,10 +706,11 @@ model ExamAnswer {
 
   @@index([examId])
   @@index([questionId])
+  @@unique([examId, questionId])
 }
 
 // ============================================
-// 9. BOOKMARK
+// 11. BOOKMARK
 // ============================================
 
 model BookmarkedQuestion {
@@ -432,7 +733,7 @@ model BookmarkedQuestion {
 }
 
 // ============================================
-// 10. AI EXPLANATION REQUEST
+// 12. AI EXPLANATION REQUEST
 // ============================================
 
 model AIExplanationRequest {
@@ -456,12 +757,13 @@ model AIExplanationRequest {
 }
 
 // ============================================
-// 11. WEEKLY LEADERBOARD
+// 13. WEEKLY LEADERBOARD
 // ============================================
 
 model WeeklyLeaderboard {
   id            Int      @id @default(autoincrement())
   userId        Int
+  institutionId Int?
   weekStartDate DateTime @db.Date
   weekEndDate   DateTime @db.Date
   weeklySp      Int      @default(0)
@@ -469,28 +771,36 @@ model WeeklyLeaderboard {
   createdAt     DateTime @default(now())
 
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution   Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, weekStartDate])
+  @@unique([userId, institutionId, weekStartDate])
   @@index([weekStartDate])
   @@index([weeklySp])
+  @@index([institutionId, weekStartDate])
+  @@index([institutionId, weekStartDate, weeklySp])
 }
 
 // ============================================
-// 12. COLLAB SESSION
+// 14. COLLAB SESSION
 // ============================================
 
 model CollaborationSession {
   id                 Int               @id @default(autoincrement())
-  sessionType        String
+  sessionType        CollaborationSessionType
   hostUserId         Int
+  institutionId      Int?
   sessionCode        String            @unique
 
+  nameScopeKey       String
+  sessionNumber      Int
+  customName         String?
   subjectsIncluded   String[]
   totalQuestions     Int
-  questionSource     String            @default("real_past_question")
+  questionSource     CollaborationQuestionSource @default(REAL_PAST_QUESTION)
 
   status             SessionStatus     @default(WAITING)
   isLocked           Boolean           @default(false)
+  version            Int               @default(0)
   maxParticipants    Int?
 
   createdAt          DateTime          @default(now())
@@ -499,16 +809,21 @@ model CollaborationSession {
   endedAt            DateTime?
 
   host               User              @relation("SessionHost", fields: [hostUserId], references: [id])
+  institution        Institution?      @relation(fields: [institutionId], references: [id], onDelete: SetNull)
   participants       SessionParticipant[]
   exams              Exam[]
-  notifications      CollaborationNotification[]
 
+  @@index([status, createdAt])
+  @@index([institutionId])
+  @@index([institutionId, status, createdAt])
+  @@index([hostUserId, nameScopeKey])
   @@index([hostUserId])
   @@index([sessionCode])
+  @@unique([hostUserId, nameScopeKey, sessionNumber])
 }
 
 // ============================================
-// 13. SESSION PARTICIPANT
+// 15. SESSION PARTICIPANT
 // ============================================
 
 model SessionParticipant {
@@ -516,45 +831,124 @@ model SessionParticipant {
   sessionId    Int
   userId       Int
 
+  participantState ParticipantState @default(JOINED)
   score        Int?
   spEarned     Int?
   finalRank    Int?
 
   joinedAt     DateTime @default(now())
+  lastHeartbeatAt DateTime?
   finishedAt   DateTime?
 
   session      CollaborationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user         User     @relation(fields: [userId], references: [id])
 
-  @@unique([sessionId, userId])
+  @@unique([userId, sessionId])
+  @@index([userId, sessionId])
+  @@index([sessionId, participantState])
   @@index([sessionId])
 }
 
 // ============================================
-// 14. COLLAB NOTIFICATION
+// 16. COLLAB NOTIFICATION
 // ============================================
 
-model CollaborationNotification {
-  id               Int              @id @default(autoincrement())
-  sessionId        Int
-  fromUserId       Int
-  notificationType NotificationType
-  notificationData Json?
-  createdAt        DateTime         @default(now())
+model ExamSessionCounter {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  scopeKey     String
+  currentValue Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  session          CollaborationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  fromUser         User                 @relation(fields: [fromUserId], references: [id])
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([sessionId])
+  @@unique([userId, scopeKey])
+  @@index([userId])
+}
+
+model CollaborationSessionCounter {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  scopeKey     String
+  currentValue Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scopeKey])
+  @@index([userId])
+}
+
+model IdempotencyRecord {
+  id             BigInt           @id @default(autoincrement())
+  userId         Int
+  routeKey       String
+  idempotencyKey String
+  requestHash    String
+  state          IdempotencyState @default(IN_PROGRESS)
+  statusCode     Int?
+  responseBody   Json?
+  errorCode      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  expiresAt      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, routeKey, idempotencyKey])
+  @@index([expiresAt])
+  @@index([expiresAt, userId])
+  @@index([state])
+}
+
+model LeaderboardProjectionEvent {
+  id           BigInt   @id @default(autoincrement())
+  userId       Int
+  institutionId Int?
+  weeklySp     Int
+  totalSp      Int
+  source       String
+  attempts     Int      @default(0)
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  processedAt  DateTime?
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+
+  @@index([processedAt, attempts, createdAt])
+  @@index([userId, createdAt])
+  @@index([institutionId, processedAt, createdAt])
+}
+
+model LeaderboardIntegritySignal {
+  id         BigInt   @id @default(autoincrement())
+  userId     Int
+  institutionId Int?
+  signalType String
+  severity   String
+  context    Json?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, signalType, createdAt])
+  @@index([createdAt])
+  @@index([institutionId, signalType, createdAt])
 }
 
 // ============================================
-// 15. SUBSCRIPTION
+// 17. SUBSCRIPTION
 // ============================================
 
 model Subscription {
   id               Int                @id @default(autoincrement())
   userId           Int                @unique
+  provider         PaymentProvider    @default(PAYSTACK)
   planType         String
   amountPaid       Decimal            @db.Decimal(10, 2)
   paymentReference String?            @unique
@@ -562,17 +956,82 @@ model Subscription {
   startDate        DateTime
   endDate          DateTime
   autoRenew        Boolean            @default(true)
+  cancelledAt      DateTime?
+  customerCode     String?
+  authorizationCode String?
+  authorizationSignature String?
+  authorizationReusable Boolean       @default(false)
+  lastPaymentVerifiedAt DateTime?
+  renewalFailureCount Int             @default(0)
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
   user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments         SubscriptionPayment[]
 
   @@index([userId])
   @@index([endDate])
+  @@index([status, endDate])
+  @@index([autoRenew, endDate])
+}
+
+model SubscriptionPayment {
+  id                     BigInt                    @id @default(autoincrement())
+  userId                 Int
+  subscriptionId         Int?
+  provider               PaymentProvider          @default(PAYSTACK)
+  reference              String                   @unique
+  accessCode             String?
+  status                 SubscriptionPaymentStatus @default(PENDING)
+  amountPaid             Decimal                  @db.Decimal(10, 2)
+  currency               String                   @default("NGN")
+  channel                String?
+  gatewayResponse        String?
+  requestedAutoRenew     Boolean                  @default(false)
+  customerCode           String?
+  authorizationCode      String?
+  authorizationSignature String?
+  providerPayload        Json?
+  paidAt                 DateTime?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, createdAt])
+  @@index([subscriptionId, createdAt])
+  @@index([status, createdAt])
+  @@index([status, paidAt])
+}
+
+model PremiumEntitlement {
+  id               BigInt                   @id @default(autoincrement())
+  userId           Int
+  grantedByAdminId Int
+  revokedByAdminId Int?
+  kind             PremiumEntitlementKind
+  status           PremiumEntitlementStatus @default(ACTIVE)
+  startsAt         DateTime
+  endsAt           DateTime
+  note             String
+  revokedAt        DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  user             User                     @relation("PremiumEntitlementUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedByAdmin   User                     @relation("PremiumEntitlementGrantedBy", fields: [grantedByAdminId], references: [id])
+  revokedByAdmin   User?                    @relation("PremiumEntitlementRevokedBy", fields: [revokedByAdminId], references: [id])
+
+  @@index([userId, status, endsAt])
+  @@index([userId, startsAt, endsAt])
+  @@index([grantedByAdminId, createdAt])
+  @@index([revokedByAdminId, createdAt])
+  @@index([status, createdAt])
 }
 
 // ============================================
-// 16. STUDY ACTIVITY
+// 18. STUDY ACTIVITY
 // ============================================
 
 model StudyActivity {
@@ -590,16 +1049,21 @@ model StudyActivity {
 }
 
 // ============================================
-// 17. EMAIL LOG
+// 19. EMAIL LOG
 // ============================================
 
 model EmailLog {
   id             Int       @id @default(autoincrement())
   userId         Int
   emailType      EmailType
+  provider       EmailProvider?
+  recipientEmail String?
+  subject        String?
   sentAt         DateTime  @default(now())
   status         String    @default("sent")
   emailServiceId String?
+  errorMessage   String?
+  metadata       Json?
 
   opened         Boolean   @default(false)
   clicked        Boolean   @default(false)
@@ -608,10 +1072,29 @@ model EmailLog {
 
   @@index([userId])
   @@index([sentAt])
+  @@index([status, sentAt])
+}
+
+model AdminAnalyticsDailyRollup {
+  date                     DateTime @id @db.Date
+  newUsers                 Int      @default(0)
+  examsStarted             Int      @default(0)
+  examsCompleted           Int      @default(0)
+  collaborationSessions    Int      @default(0)
+  successfulPayments       Int      @default(0)
+  successfulRevenueNaira   Decimal  @default(0) @db.Decimal(12, 2)
+  manualPremiumGrants      Int      @default(0)
+  promotionalPremiumGrants Int      @default(0)
+  correctivePremiumGrants  Int      @default(0)
+  premiumRevocations       Int      @default(0)
+  generatedAt              DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@index([updatedAt])
 }
 
 // ============================================
-// 18. SYSTEM SETTINGS (Singleton)
+// 20. SYSTEM SETTINGS (Singleton)
 // ============================================
 // Global platform settings controlled by SUPERADMIN only
 // CRITICAL: Only row id=1 should ever exist. Enforce at runtime.
@@ -632,7 +1115,7 @@ model SystemSettings {
 }
 
 // ============================================
-// 19. AUDIT LOG
+// 21. AUDIT LOG
 // ============================================ 
 model AuditLog {
   id          BigInt   @id @default(autoincrement())
@@ -656,7 +1139,7 @@ model AuditLog {
 }
 
 // ============================================
-// 20. ADMIN AUDIT LOG (Security-Critical)
+// 22. ADMIN AUDIT LOG (Security-Critical)
 // ============================================
 // Separate from user AuditLog for admin/superadmin actions
 // Actor role is snapshotted at action time for historical accuracy
@@ -683,4 +1166,17 @@ model AdminAuditLog {
   @@index([action])
   @@index([targetType])
   @@index([createdAt])
+}
+
+model UserAchievement {
+  id         BigInt         @id @default(autoincrement())
+  userId     Int
+  key        AchievementKey
+  unlockedAt DateTime       @default(now())
+  metadata   Json?
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, unlockedAt])
 }

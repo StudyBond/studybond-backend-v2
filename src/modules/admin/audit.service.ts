@@ -1,25 +1,33 @@
-// ============================================
-// AUDIT SERVICE
-// ============================================
 // Centralized logging for all admin/superadmin actions
 // Every sensitive operation MUST go through this service
 
 import prisma from '../../config/database';
 import { AuditLogEntry, AdminAuditAction, TargetType } from './admin.types';
 
+type CheatViolationAuditRow = {
+    id: bigint;
+    userId: number | null;
+    action: string;
+    metadata: unknown;
+    ipAddress: string | null;
+    createdAt: Date;
+    user: {
+        id: number;
+        email: string;
+        fullName: string;
+    } | null;
+};
+
 export class AuditService {
 
-    /**
-     * Log an admin/superadmin action
-     * This is the single source of truth for admin activity
-     */
+    /* Log an admin/superadmin action; This is the single source of truth for admin activity */
     async logAction(entry: AuditLogEntry): Promise<void> {
         try {
             await prisma.adminAuditLog.create({
                 data: {
                     actorId: entry.actorId,
                     actorRole: entry.actorRole,
-                    action: entry.action as any, // Prisma enum
+                    action: entry.action as any,
                     targetType: entry.targetType,
                     targetId: entry.targetId,
                     metadata: entry.metadata as any, // Cast to any to satisfy Prisma InputJsonValue
@@ -34,9 +42,7 @@ export class AuditService {
         }
     }
 
-    /**
-     * Log a successful role promotion
-     */
+    // Log a successful role promotion
     async logRolePromotion(
         actorId: number,
         actorRole: string,
@@ -56,9 +62,7 @@ export class AuditService {
         });
     }
 
-    /**
-     * Log a successful role demotion
-     */
+    // Log a successful role demotion
     async logRoleDemotion(
         actorId: number,
         actorRole: string,
@@ -78,9 +82,7 @@ export class AuditService {
         });
     }
 
-    /**
-     * Log a failed role change attempt (security event)
-     */
+    // Log a failed role change attempt (security event)
     async logRoleChangeAttemptFailed(
         actorId: number,
         actorRole: string,
@@ -100,9 +102,7 @@ export class AuditService {
         });
     }
 
-    /**
-     * Log user ban action
-     */
+    // Log user ban action
     async logUserBan(
         actorId: number,
         actorRole: string,
@@ -121,9 +121,7 @@ export class AuditService {
         });
     }
 
-    /**
-     * Log user unban action
-     */
+    // Log user unban action
     async logUserUnban(
         actorId: number,
         actorRole: string,
@@ -140,9 +138,7 @@ export class AuditService {
         });
     }
 
-    /**
-     * Log device removal action
-     */
+    /* Log device removal action */
     async logDeviceRemoval(
         actorId: number,
         actorRole: string,
@@ -163,9 +159,7 @@ export class AuditService {
         });
     }
 
-    /**
-     * Log email system toggle (SUPERADMIN only)
-     */
+    /* Log email system toggle (SUPERADMIN only) */
     async logEmailToggle(
         actorId: number,
         actorRole: string,
@@ -182,9 +176,7 @@ export class AuditService {
         });
     }
 
-    /**
-     * Log question deletion
-     */
+    /* Log question deletion */
     async logQuestionDeletion(
         actorId: number,
         actorRole: string,
@@ -203,9 +195,7 @@ export class AuditService {
         });
     }
 
-    /**
-     * Log unauthorized action attempt (security event)
-     */
+    /* Log unauthorized action attempt (security event) */
     async logUnauthorizedAttempt(
         actorId: number,
         actorRole: string,
@@ -225,9 +215,7 @@ export class AuditService {
         });
     }
 
-    /**
-     * Get audit logs with filtering (for internal review)
-     */
+    /* audit logs with filtering (for internal review) */
     async getAuditLogs(options: {
         actorId?: number;
         action?: AdminAuditAction;
@@ -250,6 +238,58 @@ export class AuditService {
             where.createdAt = {};
             if (options.startDate) where.createdAt.gte = options.startDate;
             if (options.endDate) where.createdAt.lte = options.endDate;
+        }
+
+        if (options.action === 'EXAM_CHEAT_VIOLATION') {
+            const [logs, total]: [CheatViolationAuditRow[], number] = await Promise.all([
+                prisma.auditLog.findMany({
+                    where: {
+                        action: 'EXAM_CHEAT_VIOLATION' as any,
+                        userId: options.actorId,
+                        createdAt: where.createdAt
+                    },
+                    skip,
+                    take: limit,
+                    orderBy: { createdAt: 'desc' },
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                email: true,
+                                fullName: true
+                            }
+                        }
+                    }
+                }),
+                prisma.auditLog.count({
+                    where: {
+                        action: 'EXAM_CHEAT_VIOLATION' as any,
+                        userId: options.actorId,
+                        createdAt: where.createdAt
+                    }
+                })
+            ]);
+
+            return {
+                logs: logs.map((l) => ({
+                    id: Number(l.id),
+                    actorId: l.userId,
+                    actorRole: 'USER',
+                    action: l.action,
+                    targetType: 'USER',
+                    targetId: String(l.userId),
+                    metadata: l.metadata,
+                    ipAddress: l.ipAddress,
+                    createdAt: l.createdAt,
+                    actor: l.user
+                })),
+                meta: {
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit)
+                }
+            };
         }
 
         const [logs, total] = await Promise.all([
