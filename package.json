@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "StudyBond Backend API",
   "main": "dist/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "npm run prisma:generate && tsc",
