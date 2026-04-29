@@ -595,4 +595,22 @@ export async function adminRoutes(app: FastifyInstance) {
             security: [{ bearerAuth: [] }]
         }
     }, adminController.getFreeExamCoverage);
+
+    // ADMIN+: Get free exam leaderboard (top scorers per subject per cycle)
+    app.get('/free-exam/leaderboard', {
+        preHandler: [requireAdmin],
+        config: {
+            rateLimit: {
+                max: ADMIN_CONFIG.READ_RATE_LIMIT_MAX,
+                timeWindow: '1 minute'
+            }
+        },
+        schema: {
+            tags: ['Admin'],
+            summary: 'Get free exam leaderboard',
+            description: 'Return ranked top scorers per subject for a given reset cycle. Use cycleIndex=0 for the current cycle (default), cycleIndex=1 for the previous cycle, etc.',
+            querystring: adminInstitutionScopeQuerySchema,
+            security: [{ bearerAuth: [] }]
+        }
+    }, adminController.getFreeExamLeaderboard);
 }

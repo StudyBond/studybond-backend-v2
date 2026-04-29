@@ -750,6 +750,30 @@ export class AdminController {
         );
         return reply.send(result);
     };
+
+    /* GET /admin/free-exam/leaderboard - Get top scorers per subject for a reset cycle (ADMIN+) */
+    getFreeExamLeaderboard = async (
+        request: FastifyRequest,
+        reply: FastifyReply
+    ) => {
+        const user = getAuthUser(request);
+        const query = request.query as { cycleIndex?: string };
+
+        let cycleIndex = 0;
+        if (query.cycleIndex) {
+            const parsed = Number.parseInt(query.cycleIndex, 10);
+            if (!Number.isNaN(parsed) && parsed >= 0) {
+                cycleIndex = parsed;
+            }
+        }
+
+        const result = await adminService.getFreeExamLeaderboard(
+            user.userId,
+            user.role,
+            cycleIndex
+        );
+        return reply.send(result);
+    };
 }
 
 // Singleton instance

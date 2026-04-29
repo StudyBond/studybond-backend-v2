@@ -1618,6 +1618,277 @@ export class AdminService {
         return { subjects };
     }
 
+    /**
+     * ADMIN+: Retrieve ranked leaderboard of top free-exam scorers per subject
+     * for a given reset cycle. Uses AdminAuditLog FREE_EXAM_CREDITS_RESET entries
+     * to derive cycle boundaries.
+     *
+     * - cycleIndex 0 = current/latest cycle (default)
+     * - cycleIndex 1 = previous cycle, etc.
+     * - Only first-attempt exams (isRetake=false) are included for fairness.
+     */
+    async getFreeExamLeaderboard(
+        _actorId: number,
+        actorRole: string,
+        cycleIndex: number = 0
+    ): Promise<{
+        cycles: Array<{
+            index: number;
+            resetAt: string;
+            label: string;
+        }>;
+        activeCycleIndex: number;
+        cycleStart: string;
+        cycleEnd: string | null;
+        subjects: Array<{
+            subject: string;
+            scorers: Array<{
+                rank: number;
+                userId: number;
+                fullName: string;
+                email: string;
+                score: number;
+                totalQuestions: number;
+                percentage: number;
+                examId: number;
+                completedAt: string;
+                timeTakenSeconds: number;
+            }>;
+        }>;
+    }> {
+        if (!hasRoleAtLeast(actorRole, 'ADMIN')) {
+            throw new ForbiddenError('Admin access required');
+        }
+
+        // 1. Fetch all reset events ordered by most recent first
+        const resetEvents = await prisma.adminAuditLog.findMany({
+            where: { action: 'FREE_EXAM_CREDITS_RESET' },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, createdAt: true }
+        });
+
+        // 2. Build cycle timeline
+        // Cycles are numbered 0 (latest), 1 (previous), etc.
+        // Each cycle: [resetAt, nextResetAt)
+        // The current cycle: [lastReset, now)
+        // Pre-first-reset cycle: [epoch, firstReset)
+        const cycles: Array<{
+            index: number;
+            resetAt: Date;
+            label: string;
+            start: Date;
+            end: Date | null;
+        }> = [];
+
+        if (resetEvents.length === 0) {
+            // No resets have ever occurred — entire history is one cycle
+            cycles.push({
+                index: 0,
+                resetAt: new Date(0),
+                label: 'All time (no resets yet)',
+                start: new Date(0),
+                end: null
+            });
+        } else {
+            // Current/latest cycle (index 0): from last reset to now
+            cycles.push({
+                index: 0,
+                resetAt: resetEvents[0].createdAt,
+                label: `Current cycle — ${resetEvents[0].createdAt.toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' })}`,
+                start: resetEvents[0].createdAt,
+                end: null
+            });
+
+            // Historical cycles
+            for (let i = 0; i < resetEvents.length - 1; i++) {
+                const cycleStart = resetEvents[i + 1].createdAt;
+                const cycleEnd = resetEvents[i].createdAt;
+                cycles.push({
+                    index: i + 1,
+                    resetAt: cycleStart,
+                    label: `Cycle ${resetEvents.length - i - 1} — ${cycleStart.toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' })}`,
+                    start: cycleStart,
+                    end: cycleEnd
+                });
+            }
+
+            // Pre-first-reset cycle (the oldest)
+            const oldestReset = resetEvents[resetEvents.length - 1].createdAt;
+            cycles.push({
+                index: resetEvents.length,
+                resetAt: new Date(0),
+                label: 'Pre-reset (initial)',
+                start: new Date(0),
+                end: oldestReset
+            });
+        }
+
+        // 3. Resolve the selected cycle
+        const safeIndex = Math.max(0, Math.min(cycleIndex, cycles.length - 1));
+        const selectedCycle = cycles[safeIndex];
+
+        // 4. Query completed first-attempt real exams from free users within the cycle window
+        const dateFilter: Record<string, Date> = {};
+        if (selectedCycle.start.getTime() > 0) {
+            dateFilter.gte = selectedCycle.start;
+        }
+        if (selectedCycle.end) {
+            dateFilter.lt = selectedCycle.end;
+        }
+
+        const exams = await prisma.exam.findMany({
+            where: {
+                examType: 'REAL_PAST_QUESTION',
+                status: 'COMPLETED',
+                isRetake: false,
+                completedAt: Object.keys(dateFilter).length > 0 ? dateFilter : undefined,
+                user: {
+                    isPremium: false
+                }
+            },
+            select: {
+                id: true,
+                userId: true,
+                subjectsIncluded: true,
+                score: true,
+                totalQuestions: true,
+                percentage: true,
+                timeTakenSeconds: true,
+                completedAt: true,
+                user: {
+                    select: {
+                        id: true,
+                        fullName: true,
+                        email: true
+                    }
+                },
+                examAnswers: {
+                    select: {
+                        isCorrect: true,
+                        question: {
+                            select: {
+                                subject: true
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: { completedAt: 'asc' }
+        });
+
+        // 5. Compute per-subject scores for each exam
+        // Structure: Map<subject, Map<userId, { best scorer entry }>>
+        const subjectMap = new Map<string, Map<number, {
+            userId: number;
+            fullName: string;
+            email: string;
+            score: number;
+            totalQuestions: number;
+            percentage: number;
+            examId: number;
+            completedAt: Date;
+            timeTakenSeconds: number;
+        }>>();
+
+        for (const exam of exams) {
+            // Group exam answers by subject
+            const subjectAnswers = new Map<string, { correct: number; total: number }>();
+
+            for (const answer of exam.examAnswers) {
+                const subject = answer.question.subject;
+                const existing = subjectAnswers.get(subject) ?? { correct: 0, total: 0 };
+                existing.total++;
+                if (answer.isCorrect) existing.correct++;
+                subjectAnswers.set(subject, existing);
+            }
+
+            // For each subject in this exam, record the user's score
+            for (const [subject, stats] of subjectAnswers) {
+                if (!subjectMap.has(subject)) {
+                    subjectMap.set(subject, new Map());
+                }
+
+                const userMap = subjectMap.get(subject)!;
+                const pct = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100 * 10) / 10 : 0;
+
+                // First-attempt only: since isRetake=false, if a user has multiple
+                // first-attempt exams in the same subject (across different exam sessions
+                // in this cycle), use the FIRST one chronologically (earlier completedAt wins).
+                if (!userMap.has(exam.userId)) {
+                    userMap.set(exam.userId, {
+                        userId: exam.userId,
+                        fullName: exam.user.fullName,
+                        email: exam.user.email,
+                        score: stats.correct,
+                        totalQuestions: stats.total,
+                        percentage: pct,
+                        examId: exam.id,
+                        completedAt: exam.completedAt!,
+                        timeTakenSeconds: exam.timeTakenSeconds ?? 0
+                    });
+                }
+            }
+        }
+
+        // 6. Build ranked leaderboard per subject
+        const subjects: Array<{
+            subject: string;
+            scorers: Array<{
+                rank: number;
+                userId: number;
+                fullName: string;
+                email: string;
+                score: number;
+                totalQuestions: number;
+                percentage: number;
+                examId: number;
+                completedAt: string;
+                timeTakenSeconds: number;
+            }>;
+        }> = [];
+
+        const sortedSubjects = [...subjectMap.keys()].sort();
+
+        for (const subject of sortedSubjects) {
+            const userMap = subjectMap.get(subject)!;
+            const scorers = [...userMap.values()]
+                .sort((a, b) => {
+                    // Primary: percentage descending
+                    if (b.percentage !== a.percentage) return b.percentage - a.percentage;
+                    // Secondary: raw score descending
+                    if (b.score !== a.score) return b.score - a.score;
+                    // Tertiary: time ascending (faster is better)
+                    return a.timeTakenSeconds - b.timeTakenSeconds;
+                })
+                .map((scorer, idx) => ({
+                    rank: idx + 1,
+                    userId: scorer.userId,
+                    fullName: scorer.fullName,
+                    email: scorer.email,
+                    score: scorer.score,
+                    totalQuestions: scorer.totalQuestions,
+                    percentage: scorer.percentage,
+                    examId: scorer.examId,
+                    completedAt: scorer.completedAt.toISOString(),
+                    timeTakenSeconds: scorer.timeTakenSeconds
+                }));
+
+            subjects.push({ subject, scorers });
+        }
+
+        return {
+            cycles: cycles.map(c => ({
+                index: c.index,
+                resetAt: c.resetAt.toISOString(),
+                label: c.label
+            })),
+            activeCycleIndex: safeIndex,
+            cycleStart: selectedCycle.start.toISOString(),
+            cycleEnd: selectedCycle.end?.toISOString() ?? null,
+            subjects
+        };
+    }
+
     async createInstitution(
         actorId: number,
         actorRole: string,

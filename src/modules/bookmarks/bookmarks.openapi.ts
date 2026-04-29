@@ -33,6 +33,7 @@ export const bookmarkQuestionFullSchema = bookmarkQuestionSchema.extend({
   optionEImageUrl: z.string().nullable(),
   correctAnswer: z.string(),
   parentQuestionText: z.string().nullable(),
+  parentQuestionImageUrl: z.string().nullable(),
   explanation: z.object({
     text: z.string(),
     imageUrl: z.string().nullable(),
