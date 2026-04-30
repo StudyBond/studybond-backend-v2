@@ -256,16 +256,6 @@ export function formatClientError(
   }
 
   if (statusCode >= 500) {
-    // If it's an operational error (AppError) or a deliberate 500 from our logic,
-    // we want to see the message to help debug, especially in admin flows.
-    if (error?.isOperational || error?.message) {
-      return {
-        message: error.message,
-        code: code || 'INTERNAL_SERVER_ERROR',
-        hint: 'This error originated from the application logic. Check logs for details.'
-      };
-    }
-
     return {
       message:
         "Something went wrong on our side. Please try again in a moment.",
