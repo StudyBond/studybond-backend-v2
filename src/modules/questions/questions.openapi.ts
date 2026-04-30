@@ -47,7 +47,7 @@ export const questionResponseSchema = z.object({
   }).nullable().optional(),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema
-}).strict();
+}).passthrough();
 
 export const questionAssetUploadResponseSchema = z.object({
   provider: z.literal('CLOUDINARY'),
@@ -70,7 +70,7 @@ export const bulkUploadRowErrorSchema = z.object({
   row: z.number().int().positive(),
   field: z.string(),
   message: z.string()
-}).strict();
+}).passthrough();
 
 export const bulkUploadResponseSchema = z.object({
   success: z.boolean(),
@@ -79,4 +79,4 @@ export const bulkUploadResponseSchema = z.object({
   errorCount: z.number().int().nonnegative(),
   errors: z.array(bulkUploadRowErrorSchema),
   createdIds: z.array(z.number().int().positive())
-}).strict();
+}).passthrough();

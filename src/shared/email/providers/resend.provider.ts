@@ -46,7 +46,9 @@ export class ResendEmailProvider implements EmailProviderClient {
           'authorization': `Bearer ${EMAIL_CONFIG.RESEND_API_KEY}`
         },
         body: JSON.stringify({
-          from: `${EMAIL_CONFIG.FROM_NAME} <${EMAIL_CONFIG.FROM_ADDRESS}>`,
+          from: input.from 
+            ? `${input.from.name || EMAIL_CONFIG.FROM_NAME} <${input.from.email}>`
+            : `${EMAIL_CONFIG.FROM_NAME} <${EMAIL_CONFIG.FROM_ADDRESS}>`,
           to: [input.to.email],
           reply_to: EMAIL_CONFIG.REPLY_TO_ADDRESS,
           subject: input.subject,

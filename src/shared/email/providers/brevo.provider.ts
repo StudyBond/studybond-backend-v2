@@ -47,8 +47,8 @@ export class BrevoEmailProvider implements EmailProviderClient {
         },
         body: JSON.stringify({
           sender: {
-            name: EMAIL_CONFIG.FROM_NAME,
-            email: EMAIL_CONFIG.FROM_ADDRESS
+            name: input.from?.name || EMAIL_CONFIG.FROM_NAME,
+            email: input.from?.email || EMAIL_CONFIG.FROM_ADDRESS
           },
           to: [
             {

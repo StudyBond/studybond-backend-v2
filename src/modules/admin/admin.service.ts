@@ -1671,7 +1671,7 @@ export class AdminService {
         // Cycles are numbered 0 (latest), 1 (previous), etc.
         // Each cycle: [resetAt, nextResetAt)
         // The current cycle: [lastReset, now)
-        // Pre-first-reset cycle: [epoch, firstReset)
+        // Pre-first-reset cycle: [baseline, firstReset)
         const cycles: Array<{
             index: number;
             resetAt: Date;
@@ -1680,13 +1680,24 @@ export class AdminService {
             end: Date | null;
         }> = [];
 
+        // Helper to get a sensible baseline date if no resets exist
+        const getBaselineDate = async () => {
+            const oldestExam = await prisma.exam.findFirst({
+                orderBy: { startedAt: 'asc' },
+                select: { startedAt: true }
+            });
+            // If no exams exist, fallback to the current moment so the duration is 0
+            return oldestExam?.startedAt ?? new Date();
+        };
+
         if (resetEvents.length === 0) {
             // No resets have ever occurred — entire history is one cycle
+            const baseline = await getBaselineDate();
             cycles.push({
                 index: 0,
-                resetAt: new Date(0),
+                resetAt: baseline,
                 label: 'All time (no resets yet)',
-                start: new Date(0),
+                start: baseline,
                 end: null
             });
         } else {
@@ -1714,11 +1725,12 @@ export class AdminService {
 
             // Pre-first-reset cycle (the oldest)
             const oldestReset = resetEvents[resetEvents.length - 1].createdAt;
+            const baseline = await getBaselineDate();
             cycles.push({
                 index: resetEvents.length,
-                resetAt: new Date(0),
+                resetAt: baseline,
                 label: 'Pre-reset (initial)',
-                start: new Date(0),
+                start: baseline,
                 end: oldestReset
             });
         }

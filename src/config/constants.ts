@@ -62,6 +62,9 @@ export const SUBSCRIPTION_CONFIG = {
 export const EMAIL_CONFIG = {
     FROM_NAME: (process.env.EMAIL_FROM_NAME || 'StudyBond').trim(),
     FROM_ADDRESS: process.env.EMAIL_FROM_ADDRESS?.trim() || '',
+    SECURITY_FROM_ADDRESS: process.env.EMAIL_SECURITY_FROM_ADDRESS?.trim() || 'security@mail.studybond.app',
+    WELCOME_FROM_ADDRESS: process.env.EMAIL_WELCOME_FROM_ADDRESS?.trim() || 'welcome@mail.studybond.app',
+    REMINDERS_FROM_ADDRESS: process.env.EMAIL_REMINDERS_FROM_ADDRESS?.trim() || 'reminders@mail.studybond.app',
     REPLY_TO_ADDRESS: process.env.EMAIL_REPLY_TO_ADDRESS?.trim() || undefined,
     PROVIDER_TIMEOUT_MS: parsePositiveInt(process.env.EMAIL_PROVIDER_TIMEOUT_MS, 10000),
     BREVO_API_KEY: process.env.BREVO_API_KEY?.trim() || '',

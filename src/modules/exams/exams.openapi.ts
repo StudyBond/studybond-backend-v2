@@ -20,7 +20,7 @@ export const examQuestionSchema = z.object({
   parentQuestionImageUrl: z.string().nullable(),
   subject: z.string(),
   topic: z.string().nullable()
-}).strict();
+}).passthrough();
 
 export const examSessionPayloadSchema = z.object({
   examId: z.number().int().positive(),
@@ -34,7 +34,7 @@ export const examSessionPayloadSchema = z.object({
   startedAt: isoDateTimeSchema,
   expiresAt: isoDateTimeSchema,
   questions: z.array(examQuestionSchema)
-}).strict();
+}).passthrough();
 
 export const examQuestionWithAnswerSchema = examQuestionSchema.extend({
   correctAnswer: z.string(),
@@ -71,7 +71,7 @@ export const examResultPayloadSchema = z.object({
     weeklySp: z.number().int(),
     currentStreak: z.number().int()
   }).strict()
-}).strict();
+}).passthrough();
 
 export const examSummarySchema = z.object({
   id: z.number().int().positive(),
@@ -91,7 +91,7 @@ export const examSummarySchema = z.object({
   startedAt: isoDateTimeSchema,
   completedAt: isoDateTimeSchema.nullable(),
   timeTakenSeconds: z.number().int().nullable()
-}).strict();
+}).passthrough();
 
 export const examHistoryPayloadSchema = z.object({
   exams: z.array(examSummarySchema),
@@ -102,7 +102,7 @@ export const examHistoryPayloadSchema = z.object({
     totalSpEarned: z.number().int().nonnegative(),
     bestScore: z.number()
   }).strict()
-}).strict();
+}).passthrough();
 
 export const examAbandonPayloadSchema = z.object({
   examId: z.number().int().positive(),
@@ -117,4 +117,4 @@ export const examEligibilityPayloadSchema = z.object({
   creditsUsed: z.number().int().optional(),
   creditsRemaining: z.number().int().optional(),
   requestedCredits: z.number().int().optional()
-}).strict();
+}).passthrough();

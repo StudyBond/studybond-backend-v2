@@ -21,6 +21,7 @@ export interface TransactionalEmailInput {
 }
 
 export interface EmailProviderSendInput {
+  from?: EmailAddress;
   to: EmailAddress;
   subject: string;
   html: string;

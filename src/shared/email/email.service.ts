@@ -1,5 +1,6 @@
-import { EmailProvider, Prisma } from '@prisma/client';
+import { EmailProvider, EmailType, Prisma } from '@prisma/client';
 import prisma from '../../config/database';
+import { EMAIL_CONFIG } from '../../config/constants';
 import { AppError } from '../errors/AppError';
 import { getGlobalMetricsRegistry } from '../metrics/global';
 import { EmailProviderError } from './email-provider-error';
@@ -107,11 +108,28 @@ export class TransactionalEmailService {
     return settings?.emailEnabled ?? true;
   }
 
+  private getFromAddressForType(emailType: string): string {
+    switch (emailType) {
+      case EmailType.VERIFICATION_OTP:
+      case EmailType.DEVICE_VERIFICATION_OTP:
+      case EmailType.PASSWORD_RESET_OTP:
+        return EMAIL_CONFIG.SECURITY_FROM_ADDRESS;
+      case EmailType.WELCOME_EMAIL:
+        return EMAIL_CONFIG.WELCOME_FROM_ADDRESS;
+      case EmailType.EVENING_REMINDER:
+        return EMAIL_CONFIG.REMINDERS_FROM_ADDRESS;
+      default:
+        return EMAIL_CONFIG.FROM_ADDRESS;
+    }
+  }
+
   private async previewSend(input: TransactionalEmailInput): Promise<TransactionalEmailSendResult> {
+    const fromAddress = this.getFromAddressForType(input.emailType);
     await this.writeEmailLog(input, {
       status: 'preview',
       metadata: {
-        mode: 'DEV_PREVIEW'
+        mode: 'DEV_PREVIEW',
+        from: fromAddress
       }
     });
 
@@ -175,6 +193,7 @@ export class TransactionalEmailService {
     }
 
     const attempts: TransactionalEmailSendResult['attempts'] = [];
+    const fromAddress = this.getFromAddressForType(input.emailType);
 
     for (let index = 0; index < availableProviders.length; index += 1) {
       const provider = availableProviders[index];
@@ -182,6 +201,10 @@ export class TransactionalEmailService {
 
       try {
         const result = await provider.send({
+          from: {
+            email: fromAddress,
+            name: EMAIL_CONFIG.FROM_NAME
+          },
           to: input.to,
           subject: input.subject,
           html: input.html,
