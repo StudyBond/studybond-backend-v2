@@ -5,6 +5,8 @@ import { authenticate } from '../../shared/decorators/authenticate';
 import { requireAdmin } from '../../shared/decorators/requireAdmin';
 import {
     bulkUploadQuerySchema,
+    bulkUploadHistoryQuerySchema,
+    bulkUploadDuplicateCheckQuerySchema,
     createQuestionSchema,
     questionAssetKindParamSchema,
     questionFilterSchema,
@@ -13,6 +15,8 @@ import {
 } from './questions.schema';
 import {
     bulkUploadResponseSchema,
+    bulkUploadHistoryResponseSchema,
+    bulkUploadDuplicateCheckResponseSchema,
     questionListResponseSchema,
     questionAssetUploadResponseSchema,
     questionResponseSchema
@@ -109,6 +113,36 @@ export async function questionsRoutes(app: FastifyInstance) {
         }
     }, controller.deleteQuestion);
 
+    // ── Bulk Upload Management ─────────────────────────
+
+    // Upload history (must be registered before /bulk to avoid route conflicts)
+    app.get('/bulk/history', {
+        schema: {
+            tags: ['Questions'],
+            summary: 'Bulk upload history',
+            description: 'List recent bulk upload batches with metadata for auditing.',
+            querystring: bulkUploadHistoryQuerySchema,
+            security: [{ bearerAuth: [] }],
+            response: withStandardErrorResponses({
+                200: bulkUploadHistoryResponseSchema
+            })
+        }
+    }, controller.bulkUploadHistory);
+
+    // Duplicate check
+    app.get('/bulk/check-duplicate', {
+        schema: {
+            tags: ['Questions'],
+            summary: 'Check for duplicate file',
+            description: 'Check if a file with the given SHA-256 hash has already been uploaded.',
+            querystring: bulkUploadDuplicateCheckQuerySchema,
+            security: [{ bearerAuth: [] }],
+            response: withStandardErrorResponses({
+                200: bulkUploadDuplicateCheckResponseSchema
+            })
+        }
+    }, controller.bulkUploadDuplicateCheck);
+
     // Bulk Upload (CSV/Excel)
     app.post('/bulk', {
         schema: {
@@ -126,3 +160,4 @@ export async function questionsRoutes(app: FastifyInstance) {
 
     app.log.info('Questions routes registered');
 }
+

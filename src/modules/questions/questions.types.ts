@@ -129,4 +129,5 @@ export interface QuestionAssetUploadResponse {
 
 export interface BulkQuestionUploadQuery {
     institutionCode?: string;
+    fileHash?: string;
 }

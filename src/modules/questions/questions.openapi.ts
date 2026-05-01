@@ -78,5 +78,36 @@ export const bulkUploadResponseSchema = z.object({
   successCount: z.number().int().nonnegative(),
   errorCount: z.number().int().nonnegative(),
   errors: z.array(bulkUploadRowErrorSchema),
-  createdIds: z.array(z.number().int().positive())
+  createdIds: z.array(z.number().int().positive()),
+  batchId: z.number().int().positive().nullable()
 }).passthrough();
+
+// ── Batch history ──────────────────────────────────────
+
+export const bulkUploadBatchSchema = z.object({
+  id: z.number().int().positive(),
+  institutionId: z.number().int().positive(),
+  institutionCode: z.string(),
+  uploadedById: z.number().int().positive(),
+  uploaderName: z.string(),
+  fileName: z.string(),
+  fileHash: z.string(),
+  totalRows: z.number().int().nonnegative(),
+  successCount: z.number().int().nonnegative(),
+  errorCount: z.number().int().nonnegative(),
+  questionCount: z.number().int().nonnegative(),
+  status: z.string(),
+  createdAt: z.string()
+}).passthrough();
+
+export const bulkUploadHistoryResponseSchema = z.object({
+  batches: z.array(bulkUploadBatchSchema),
+  total: z.number().int().nonnegative()
+}).strict();
+
+// ── Duplicate check ────────────────────────────────────
+
+export const bulkUploadDuplicateCheckResponseSchema = z.object({
+  isDuplicate: z.boolean(),
+  existingBatch: bulkUploadBatchSchema.nullable()
+}).strict();

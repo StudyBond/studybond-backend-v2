@@ -150,7 +150,17 @@ export const questionIdParamSchema = z.object({
 });
 
 export const bulkUploadQuerySchema = z.object({
-  institutionCode: optionalInstitutionCodeSchema
+  institutionCode: optionalInstitutionCodeSchema,
+  fileHash: z.string().min(1).max(128).optional()
+}).strict();
+
+export const bulkUploadHistoryQuerySchema = z.object({
+  institutionCode: optionalInstitutionCodeSchema,
+  limit: z.coerce.number().int().positive().max(50).default(20)
+}).strict();
+
+export const bulkUploadDuplicateCheckQuerySchema = z.object({
+  fileHash: z.string().min(1, 'fileHash is required').max(128)
 }).strict();
 
 export const questionAssetKindParamSchema = z.object({

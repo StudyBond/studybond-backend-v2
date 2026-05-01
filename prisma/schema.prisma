@@ -131,6 +131,11 @@ enum QuestionPool {
   PRACTICE
 }
 
+enum BulkUploadStatus {
+  COMPLETED
+  FAILED
+}
+
 enum ParticipantState {
   JOINED
   READY
@@ -323,6 +328,7 @@ model User {
   achievements            UserAchievement[]
   institutionStats        UserInstitutionStats[]
   targetInstitution       Institution? @relation("UserTargetInstitution", fields: [targetInstitutionId], references: [id], onDelete: SetNull)
+  bulkUploadBatches       BulkUploadBatch[]
 
   @@index([email])
   @@index([targetInstitutionId])
@@ -440,6 +446,7 @@ model Institution {
   leaderboardProjectionEvents LeaderboardProjectionEvent[]
   leaderboardIntegritySignals LeaderboardIntegritySignal[]
   targetUsers User[] @relation("UserTargetInstitution")
+  bulkUploadBatches BulkUploadBatch[]
 }
 
 model InstitutionExamConfig {
@@ -1179,4 +1186,29 @@ model UserAchievement {
 
   @@unique([userId, key])
   @@index([userId, unlockedAt])
+}
+
+// ============================================
+// BULK UPLOAD BATCH TRACKING
+// ============================================
+
+model BulkUploadBatch {
+  id              Int              @id @default(autoincrement())
+  institutionId   Int
+  uploadedById    Int
+  fileName        String
+  fileHash        String           // SHA-256 of file contents for duplicate detection
+  totalRows       Int
+  successCount    Int
+  errorCount      Int
+  questionIds     Int[]            // Array of created question IDs
+  status          BulkUploadStatus @default(COMPLETED)
+  createdAt       DateTime         @default(now())
+
+  institution     Institution @relation(fields: [institutionId], references: [id])
+  uploadedBy      User        @relation(fields: [uploadedById], references: [id])
+
+  @@index([institutionId, createdAt])
+  @@index([fileHash])
+  @@index([uploadedById])
 }

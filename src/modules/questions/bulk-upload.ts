@@ -32,6 +32,13 @@ export interface BulkUploadResult {
     message: string;
   }>;
   createdIds: number[];
+  batchId: number | null;
+}
+
+export interface BulkUploadContext {
+  uploadedById: number;
+  fileHash: string;
+  fileName: string;
 }
 
 export interface ParsedQuestion {
@@ -431,6 +438,7 @@ async function prepareQuestionInsert(
 export async function processBulkUpload(
   questions: ParsedQuestion[],
   query: BulkQuestionUploadQuery = {},
+  context?: BulkUploadContext,
 ): Promise<BulkUploadResult> {
   const institution = await institutionContextService.resolveByCode(
     query.institutionCode,
@@ -448,6 +456,28 @@ export async function processBulkUpload(
   }
 
   if (allErrors.length > 0) {
+    // Record a FAILED batch if context is available
+    let failedBatchId: number | null = null;
+    if (context) {
+      try {
+        const failedBatch = await prisma.bulkUploadBatch.create({
+          data: {
+            institutionId: institution.id,
+            uploadedById: context.uploadedById,
+            fileName: context.fileName,
+            fileHash: context.fileHash,
+            totalRows: questions.length,
+            successCount: 0,
+            errorCount: allErrors.length,
+            questionIds: [],
+            status: 'FAILED',
+          },
+          select: { id: true },
+        });
+        failedBatchId = failedBatch.id;
+      } catch { /* non-critical */ }
+    }
+
     return {
       success: false,
       totalRows: questions.length,
@@ -455,6 +485,7 @@ export async function processBulkUpload(
       errorCount: allErrors.length,
       errors: allErrors,
       createdIds: [],
+      batchId: failedBatchId,
     };
   }
 
@@ -563,6 +594,28 @@ export async function processBulkUpload(
       }
     }, BULK_UPLOAD_TX_OPTIONS);
 
+    // Record a COMPLETED batch
+    let batchId: number | null = null;
+    if (context) {
+      try {
+        const batch = await prisma.bulkUploadBatch.create({
+          data: {
+            institutionId: institution.id,
+            uploadedById: context.uploadedById,
+            fileName: context.fileName,
+            fileHash: context.fileHash,
+            totalRows: questions.length,
+            successCount: createdIds.length,
+            errorCount: 0,
+            questionIds: createdIds,
+            status: 'COMPLETED',
+          },
+          select: { id: true },
+        });
+        batchId = batch.id;
+      } catch { /* non-critical — upload itself succeeded */ }
+    }
+
     return {
       success: true,
       totalRows: questions.length,
@@ -570,6 +623,7 @@ export async function processBulkUpload(
       errorCount: 0,
       errors: [],
       createdIds,
+      batchId,
     };
   } catch (error: any) {
     await cleanupQuestionAssets(uploadedPublicIds);
