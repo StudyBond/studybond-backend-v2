@@ -41,7 +41,7 @@ import {
   buildExamDisplayNames,
   buildScopeKeyFromExamType,
 } from "../../shared/utils/examNaming";
-import { normalizeSubjectLabel } from "../../shared/utils/subjects";
+import { normalizeSubjectLabel, getSubjectSearchVariants } from "../../shared/utils/subjects";
 import {
   buildRouteKey,
   idempotencyService,
@@ -682,17 +682,26 @@ export class ExamsService {
 
     let globalPool = await getJson<Record<string, number>>(cacheKey);
 
-    if (!globalPool || Object.keys(globalPool).length === 0) {
-      globalPool = {};
+    const hasAllSubjects = globalPool && SUBJECTS.every(s => globalPool![s] !== undefined);
+
+    if (!globalPool || !hasAllSubjects) {
+      globalPool = globalPool || {};
       // We use the available subjects constant
       for (const subject of SUBJECTS) {
-        const questions = await prisma.$queryRaw<Array<{ id: number }>>`
-                    SELECT id FROM "Question" 
-                    WHERE subject = ${subject} AND "questionType" IN ('real_past_question', 'practice')
-                    ORDER BY RANDOM() LIMIT 1
-                `;
-        if (questions.length > 0) {
-          globalPool[subject] = questions[0].id;
+        if (!globalPool[subject]) {
+          const variants = getSubjectSearchVariants(subject);
+          const questions = await prisma.question.findMany({
+            where: {
+              subject: { in: variants },
+              questionType: { in: ['real_past_question', 'practice'] }
+            },
+            select: { id: true }
+          });
+          
+          if (questions.length > 0) {
+            const randomIndex = Math.floor(Math.random() * questions.length);
+            globalPool[subject] = questions[randomIndex].id;
+          }
         }
       }
       await setJson(cacheKey, globalPool, 24 * 60 * 60);
