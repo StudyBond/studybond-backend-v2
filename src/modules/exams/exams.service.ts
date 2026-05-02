@@ -246,7 +246,12 @@ export class ExamsService {
     institutionId: number | null;
     subjectsIncluded: string[];
     isCollaboration: boolean;
+    examType?: string;
   }): Promise<number> {
+    if (exam.examType === EXAM_TYPES.DAILY_CHALLENGE) {
+      return EXAM_CONFIG.DAILY_CHALLENGE_DURATION_SECONDS;
+    }
+
     const fallbackInstitution = await institutionContextService.resolveByCode();
     const config =
       await institutionExamConfigService.getActiveConfigForInstitutionId(
