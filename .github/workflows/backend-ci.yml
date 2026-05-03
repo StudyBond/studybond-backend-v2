@@ -40,6 +40,7 @@ jobs:
           OPENAPI_EXPORT_MODE: 'true'
           REDIS_ENABLED: 'false'
           PUBLIC_API_BASE_URL: 'http://localhost:5000'
+          JWT_SECRET: 'ci-dummy-secret-not-for-production'
         run: npm run openapi:export
 
       - name: Generate OpenAPI TypeScript types
