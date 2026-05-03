@@ -75,7 +75,9 @@ export function normalizeImageUrl(url: string | null): string | null {
     }
     
     if (fileId) {
-      return `https://drive.google.com/uc?export=view&id=${fileId}`;
+      // Use the modern lh3 format which is more reliable for <img> tags and Cloudinary imports in 2024+
+      // =s0 ensures full resolution
+      return `https://lh3.googleusercontent.com/d/${fileId}=s0`;
     }
   }
   

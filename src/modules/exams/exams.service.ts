@@ -378,6 +378,7 @@ export class ExamsService {
           creditsUsed,
           creditsRemaining,
           requestedCredits,
+          freeSubjectsTaken: user.freeSubjectsTaken as string[],
         };
       }
 
@@ -431,6 +432,7 @@ export class ExamsService {
         creditsUsed,
         creditsRemaining,
         requestedCredits,
+        freeSubjectsTaken: user.freeSubjectsTaken as string[],
       };
     }
 

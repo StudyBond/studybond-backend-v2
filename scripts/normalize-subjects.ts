@@ -2,7 +2,7 @@
  * Script to normalize all question subjects to canonical values
  * Maps variants like "English Language", "Use of English" → "English"
  *
- * Usage: npx dotenv -e .env.local ts-node scripts/normalize-subjects.ts
+ * Usage: npx dotenv-cli -e .env.local ts-node scripts/normalize-subjects.ts
  */
 
 import * as dotenv from "dotenv";

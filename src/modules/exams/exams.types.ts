@@ -213,6 +213,7 @@ export interface EligibilityCheck {
     creditsUsed?: number;
     creditsRemaining?: number;
     requestedCredits?: number;
+    freeSubjectsTaken?: string[];
 }
 
 export interface RetakeEligibility {
