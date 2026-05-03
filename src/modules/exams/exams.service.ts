@@ -48,6 +48,7 @@ import {
 } from "../../shared/idempotency/idempotency";
 import { runLeaderboardIntegrityChecks } from "../../shared/leaderboard/integrity";
 import { deriveStreakSnapshot } from "../../shared/streaks/domain";
+import { LeaderboardService } from "../leaderboard/leaderboard.service";
 import { QUESTION_POOLS } from "../questions/questions.constants";
 import { institutionContextService } from "../../shared/institutions/context";
 import {
@@ -73,6 +74,12 @@ export class ExamsService {
     process.env.EXAM_SUBMIT_LOCK_TTL_SECONDS || "30",
     10,
   );
+
+  private readonly leaderboardService: LeaderboardService;
+
+  constructor() {
+    this.leaderboardService = new LeaderboardService();
+  }
 
   private examHistoryVersionKey(userId: number): string {
     return `exam:history:version:${userId}`;
@@ -1085,6 +1092,16 @@ export class ExamsService {
         });
       } catch {
         // Non-blocking by design: leaderboard integrity checks must never fail exam submission.
+      }
+
+      // Invalidate leaderboard cache if SP was earned to ensure immediate visibility
+      if (scoring.spEarned > 0 && exam.institutionId) {
+        try {
+          await this.leaderboardService.deleteCache(exam.institutionId, "WEEKLY");
+          await this.leaderboardService.deleteCache(exam.institutionId, "ALL_TIME");
+        } catch {
+          // Non-blocking
+        }
       }
 
       return {

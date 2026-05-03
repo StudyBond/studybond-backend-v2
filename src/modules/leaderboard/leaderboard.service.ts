@@ -106,6 +106,13 @@ export class LeaderboardService {
     return chosen;
   }
 
+  public async deleteCache(institutionId: number, type: LeaderboardType): Promise<void> {
+    const limits = [10, 50, 100]; // Common limits to clear
+    for (const limit of limits) {
+      await deleteCachedLeaderboard(this.buildCacheKey(institutionId, type, limit));
+    }
+  }
+
   private buildCacheKey(institutionId: number, type: LeaderboardType, limit: number): string {
     return `leaderboard:${institutionId}:${type}:top:${limit}`;
   }
@@ -290,15 +297,10 @@ export class LeaderboardService {
 
     const memberIds = await cache.zrevrange(zsetKey, 0, requested - 1);
     if (memberIds.length === 0) {
-      this.metricCounter('leaderboard_redis_hit_total', { type, empty: true });
-      return {
-        type,
-        institution: this.mapInstitution(institution),
-        limit,
-        generatedAt: new Date().toISOString(),
-        totalParticipants: 0,
-        entries: []
-      };
+      // If Redis is empty but projection is enabled, it's safer to fallback to DB 
+      // rather than returning an empty board, in case of projection lag or workers being paused.
+      this.metricCounter('leaderboard_redis_miss_total', { reason: 'snapshot_empty_fallback' });
+      return null;
     }
 
     const rawSnapshots = await cache.hmget(redisKeys.userHash, memberIds);

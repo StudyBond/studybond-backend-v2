@@ -50,6 +50,14 @@ export async function examsRoutes(app: FastifyInstance) {
         }
     }, controller.startDailyChallenge);
 
+    /* GET /exams/daily-challenge/start - Helper to diagnose method mismatch */
+    app.get('/daily-challenge/start', async () => {
+        return {
+            success: false,
+            message: 'Daily Challenge must be started via POST request. Please ensure you are clicking the "Start" button in the application.'
+        };
+    });
+
     /* GET /exams/eligibility - Check user's exam limits and credits */
     app.get('/eligibility', {
         preValidation: [app.authenticate],

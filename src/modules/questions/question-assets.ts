@@ -56,11 +56,37 @@ export async function uploadQuestionAssetFile(
   });
 }
 
+export function normalizeImageUrl(url: string | null): string | null {
+  if (!url) return url;
+  
+  if (url.includes('drive.google.com')) {
+    let fileId: string | null = null;
+    
+    const fileDPattern = /\/file\/d\/([a-zA-Z0-9_-]+)/;
+    const fileDMatch = url.match(fileDPattern);
+    if (fileDMatch && fileDMatch[1]) {
+      fileId = fileDMatch[1];
+    } else {
+      const idPattern = /[?&]id=([a-zA-Z0-9_-]+)/;
+      const idMatch = url.match(idPattern);
+      if (idMatch && idMatch[1]) {
+        fileId = idMatch[1];
+      }
+    }
+    
+    if (fileId) {
+      return `https://drive.google.com/uc?export=view&id=${fileId}`;
+    }
+  }
+  
+  return url;
+}
+
 export async function resolveManagedQuestionAsset(
   input: ManagedQuestionAssetInput,
   kind: QuestionAssetKind
 ): Promise<ResolvedManagedQuestionAsset> {
-  const url = input.url?.trim() || null;
+  const url = normalizeImageUrl(input.url?.trim() || null);
   const publicId = input.publicId?.trim() || null;
 
   if (!url) {
