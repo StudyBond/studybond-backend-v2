@@ -112,6 +112,67 @@ export class ExamsService {
     }
   }
 
+  private calculateExamExpiresAt(
+    startedAt: Date,
+    durationSeconds: number,
+  ): Date {
+    return new Date(
+      startedAt.getTime() +
+        durationSeconds * 1000 +
+        EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS * 1000,
+    );
+  }
+
+  private async reuseOrExpireInProgressExam(
+    userId: number,
+    institutionId: number | null,
+    scopeKey: string,
+  ): Promise<ExamSessionResponse | null> {
+    const existingExam = await prisma.exam.findFirst({
+      where: {
+        userId,
+        institutionId,
+        nameScopeKey: scopeKey,
+        status: EXAM_STATUS.IN_PROGRESS as any,
+        isRetake: false,
+        isCollaboration: false,
+      },
+      select: {
+        id: true,
+        institutionId: true,
+        subjectsIncluded: true,
+        isCollaboration: true,
+        examType: true,
+        startedAt: true,
+      },
+    });
+
+    if (!existingExam) {
+      return null;
+    }
+
+    const durationSeconds =
+      await this.getConfiguredExamDurationSeconds(existingExam);
+    const expiresAt = this.calculateExamExpiresAt(
+      existingExam.startedAt,
+      durationSeconds,
+    );
+
+    if (new Date() > expiresAt) {
+      await prisma.exam.update({
+        where: { id: existingExam.id },
+        data: {
+          status: EXAM_STATUS.ABANDONED as any,
+          completedAt: new Date(),
+        },
+      });
+      await this.bumpExamHistoryVersion(userId);
+      return null;
+    }
+
+    return this.getExamQuestions(userId, existingExam.id);
+  }
+
   private async enforceStartRateLimit(userId: number): Promise<void> {
     const cache = getCacheAdapter();
     if (!cache.available) return;
@@ -213,14 +274,7 @@ export class ExamsService {
     return counter.currentValue;
   }
 
-  private async getNextSessionNumber(
-    userId: number,
-    scopeKey: string,
-  ): Promise<number> {
-    return await prisma.$transaction(async (tx: any) => {
-      return await this.nextExamSessionNumber(tx, userId, scopeKey);
-    });
-  }
+
 
   private resolveSoloExamType(
     input: StartExamInput,
@@ -467,8 +521,6 @@ export class ExamsService {
       );
     }
 
-    await this.enforceStartRateLimit(userId);
-
     const institution = await institutionContextService.resolveForUser(
       userId,
       input.institutionCode,
@@ -478,6 +530,21 @@ export class ExamsService {
         institution.id,
       );
     const resolvedExamType = this.resolveSoloExamType(input, config);
+    const scopeKey = buildScopeKeyFromExamType(
+      resolvedExamType,
+      input.subjects,
+    );
+
+    const resumedSession = await this.reuseOrExpireInProgressExam(
+      userId,
+      institution.id,
+      scopeKey,
+    );
+    if (resumedSession) {
+      return resumedSession;
+    }
+
+    await this.enforceStartRateLimit(userId);
 
     const eligibility = await this.checkExamEligibility(
       userId,
@@ -538,75 +605,84 @@ export class ExamsService {
       },
     );
 
-    const scopeKey = buildScopeKeyFromExamType(
-      resolvedExamType,
-      input.subjects,
-    );
-
     const startedAt = new Date();
-    const expiresAt = new Date(
-      startedAt.getTime() +
-        durationSeconds * 1000 +
-        EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS * 1000,
+    const expiresAt = this.calculateExamExpiresAt(
+      startedAt,
+      durationSeconds,
     );
 
     // Create exam in transaction (atomically track free credits)
-    const exam = await prisma.$transaction(async (tx: any) => {
-      const sessionNumber = await this.nextExamSessionNumber(
-        tx,
-        userId,
-        scopeKey,
-      );
-      const newExam = await tx.exam.create({
-        data: {
+    let exam;
+    try {
+      exam = await prisma.$transaction(async (tx: any) => {
+        const sessionNumber = await this.nextExamSessionNumber(
+          tx,
           userId,
-          institutionId: institution.id,
-          examType: resolvedExamType as any,
-          nameScopeKey: scopeKey,
-          sessionNumber,
-          subjectsIncluded: input.subjects,
-          totalQuestions,
-          score: 0,
-          percentage: 0,
-          spEarned: 0,
-          status: EXAM_STATUS.IN_PROGRESS as any,
-          startedAt,
-          isRetake: false,
-          attemptNumber: 1,
-          maxRetakes,
-        },
-      });
-
-      // Create placeholder exam answers (for tracking in-progress state)
-      const answerRecords = questions.map((q) => ({
-        examId: newExam.id,
-        questionId: q.id,
-        userAnswer: null,
-        isCorrect: false,
-        timeSpentSeconds: 0,
-      }));
-
-      await tx.examAnswer.createMany({
-        data: answerRecords,
-      });
-
-      // Atomically consume free credits for non-premium users on real exams
-      if (isFreeUser && resolvedExamType === EXAM_TYPES.REAL_PAST_QUESTION) {
-        const normalizedSubjects = input.subjects.map((s: string) =>
-          normalizeSubjectLabel(s),
+          scopeKey,
         );
-        await tx.user.update({
-          where: { id: userId },
+        const newExam = await tx.exam.create({
           data: {
-            freeSubjectCreditsUsed: { increment: input.subjects.length },
-            freeSubjectsTaken: { push: normalizedSubjects },
-            hasTakenFreeExam: true,
+            userId,
+            institutionId: institution.id,
+            examType: resolvedExamType as any,
+            nameScopeKey: scopeKey,
+            sessionNumber,
+            subjectsIncluded: input.subjects,
+            totalQuestions,
+            score: 0,
+            percentage: 0,
+            spEarned: 0,
+            status: EXAM_STATUS.IN_PROGRESS as any,
+            startedAt,
+            isRetake: false,
+            attemptNumber: 1,
+            maxRetakes,
           },
         });
-      }
 
-      return newExam;
-    });
+        // Create placeholder exam answers (for tracking in-progress state)
+        const answerRecords = questions.map((q) => ({
+          examId: newExam.id,
+          questionId: q.id,
+          userAnswer: null,
+          isCorrect: false,
+          timeSpentSeconds: 0,
+        }));
+
+        await tx.examAnswer.createMany({
+          data: answerRecords,
+        });
+
+        // Atomically consume free credits for non-premium users on real exams
+        if (isFreeUser && resolvedExamType === EXAM_TYPES.REAL_PAST_QUESTION) {
+          const normalizedSubjects = input.subjects.map((s: string) =>
+            normalizeSubjectLabel(s),
+          );
+          await tx.user.update({
+            where: { id: userId },
+            data: {
+              freeSubjectCreditsUsed: { increment: input.subjects.length },
+              freeSubjectsTaken: { push: normalizedSubjects },
+              hasTakenFreeExam: true,
+            },
+          });
+        }
+
+        return newExam;
+      });
+    } catch (error: any) {
+      if (error?.code === "P2002") {
+        const resumedAfterConflict = await this.reuseOrExpireInProgressExam(
+          userId,
+          institution.id,
+          scopeKey,
+        );
+        if (resumedAfterConflict) {
+          return resumedAfterConflict;
+        }
+      }
+      throw error;
+    }
 
     const naming = buildExamDisplayNames(
       resolvedExamType,
@@ -676,6 +752,10 @@ export class ExamsService {
     }
 
     await this.enforceStartRateLimit(userId);
+    const scopeKey = buildScopeKeyFromExamType(
+      EXAM_TYPES.DAILY_CHALLENGE as any,
+      input.subjects,
+    );
 
     // Calculate start of today in GMT+1 (Nigerian Time)
     const now = new Date();
@@ -693,8 +773,20 @@ export class ExamsService {
     });
 
     if (existingChallenge) {
+      if (existingChallenge.status === EXAM_STATUS.IN_PROGRESS) {
+        const resumedSession = await this.reuseOrExpireInProgressExam(
+          userId,
+          null, // Daily challenges do not have an institution context
+          existingChallenge.nameScopeKey,
+        );
+        if (resumedSession) {
+          return resumedSession;
+        }
+        // If it returns null, the session expired and was abandoned. Fall through to block.
+      }
+
       throw new AppError(
-        "You have already completed today's Global Daily Challenge. Come back tomorrow!",
+        "You have already attempted today's Global Daily Challenge. Come back tomorrow!",
         403,
       );
     }
@@ -729,79 +821,118 @@ export class ExamsService {
       await setJson(cacheKey, globalPool, 24 * 60 * 60);
     }
 
-    const selectedQuestionIds: number[] = [];
+    const selectedQuestionIds: Array<{ subject: string; questionId: number }> =
+      [];
+    const missingSubjects: string[] = [];
     for (const subject of input.subjects) {
-      if (globalPool[subject]) {
-        selectedQuestionIds.push(globalPool[subject]);
+      const questionId = globalPool[subject];
+      if (typeof questionId === "number") {
+        selectedQuestionIds.push({ subject, questionId });
+      } else {
+        missingSubjects.push(subject);
       }
     }
 
-    if (selectedQuestionIds.length === 0) {
+    if (missingSubjects.length > 0) {
       throw new AppError(
-        "Unable to load daily challenge questions. Please try again later.",
-        500,
+        `Daily challenge questions are not available for: ${missingSubjects.join(", ")}.`,
+        422,
+        EXAM_ERROR_CODES.INSUFFICIENT_QUESTIONS,
       );
     }
 
-    const rawQuestions: Array<QuestionWithMeta> =
-      await prisma.question.findMany({
-        where: { id: { in: selectedQuestionIds } },
-      });
+    const rawQuestions = await prisma.question.findMany({
+      where: {
+        id: { in: selectedQuestionIds.map((entry) => entry.questionId) },
+      },
+      include: {
+        parentQuestion: {
+          select: { questionText: true, imageUrl: true },
+        },
+      },
+    });
+
+    const foundQuestionIds = new Set(rawQuestions.map((question: any) => question.id));
+    const staleSubjects = selectedQuestionIds
+      .filter((entry) => !foundQuestionIds.has(entry.questionId))
+      .map((entry) => entry.subject);
+
+    if (staleSubjects.length > 0) {
+      throw new AppError(
+        `Daily challenge questions need to be refreshed for: ${staleSubjects.join(", ")}.`,
+        422,
+        EXAM_ERROR_CODES.INSUFFICIENT_QUESTIONS,
+      );
+    }
 
     // Map to QuestionWithMeta and shuffle options
-    const questions: QuestionWithMeta[] = rawQuestions.map((q) => {
-      return shuffleQuestionOptions(q);
+    const questions: QuestionWithMeta[] = rawQuestions.map((q: any) => {
+      const formatted = {
+        ...q,
+        parentQuestionText: q.parentQuestion?.questionText ?? null,
+        parentQuestionImageUrl: q.parentQuestion?.imageUrl ?? null,
+      };
+      return shuffleQuestionOptions(formatted);
     });
 
     const startedAt = new Date();
     const durationSeconds = EXAM_CONFIG.DAILY_CHALLENGE_DURATION_SECONDS;
-    const expiresAt = new Date(
-      startedAt.getTime() +
-        durationSeconds * 1000 +
-        EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS * 1000,
-    );
+    const expiresAt = this.calculateExamExpiresAt(startedAt, durationSeconds);
 
-    const sessionNumber = await this.getNextSessionNumber(
-      userId,
-      EXAM_TYPES.DAILY_CHALLENGE,
-    );
-
-    // Transaction to save Exam and ExamAnswer rows
-    const exam = await prisma.$transaction(async (tx: any) => {
-      const newExam = await tx.exam.create({
-        data: {
+    let exam;
+    try {
+      // Transaction to save Exam and ExamAnswer rows
+      exam = await prisma.$transaction(async (tx: any) => {
+        const sessionNumber = await this.nextExamSessionNumber(
+          tx,
           userId,
-          institutionId: null,
-          examType: EXAM_TYPES.DAILY_CHALLENGE as any,
-          nameScopeKey: buildScopeKeyFromExamType(
-            EXAM_TYPES.DAILY_CHALLENGE as any,
-            input.subjects,
-          ),
-          sessionNumber,
-          subjectsIncluded: input.subjects,
-          totalQuestions: questions.length,
-          score: 0,
-          percentage: 0,
-          spEarned: 0,
-          status: EXAM_STATUS.IN_PROGRESS as any,
-          startedAt,
-          isRetake: false,
-          attemptNumber: 1,
-          maxRetakes: 0, // No retakes for daily challenges
-        },
+          scopeKey,
+        );
+
+        const newExam = await tx.exam.create({
+          data: {
+            userId,
+            institutionId: null,
+            examType: EXAM_TYPES.DAILY_CHALLENGE as any,
+            nameScopeKey: scopeKey,
+            sessionNumber,
+            subjectsIncluded: input.subjects,
+            totalQuestions: questions.length,
+            score: 0,
+            percentage: 0,
+            spEarned: 0,
+            status: EXAM_STATUS.IN_PROGRESS as any,
+            startedAt,
+            isRetake: false,
+            attemptNumber: 1,
+            maxRetakes: 0, // No retakes for daily challenges
+          },
+        });
+
+        const answerRecords = questions.map((q) => ({
+          examId: newExam.id,
+          questionId: q.id,
+          userAnswer: null,
+          isCorrect: false,
+          timeSpentSeconds: 0,
+        }));
+
+        await tx.examAnswer.createMany({ data: answerRecords });
+        return newExam;
       });
-
-      const answerRecords = questions.map((q) => ({
-        examId: newExam.id,
-        questionId: q.id,
-        userAnswer: null,
-        isCorrect: false,
-        timeSpentSeconds: 0,
-      }));
-
-      await tx.examAnswer.createMany({ data: answerRecords });
-      return newExam;
-    });
+    } catch (error: any) {
+      if (error?.code === "P2002") {
+        const resumedAfterConflict = await this.reuseOrExpireInProgressExam(
+          userId,
+          null,
+          scopeKey,
+        );
+        if (resumedAfterConflict) {
+          return resumedAfterConflict;
+        }
+      }
+      throw error;
+    }
 
     const naming = buildExamDisplayNames(
       EXAM_TYPES.DAILY_CHALLENGE as any,

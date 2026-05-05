@@ -79,6 +79,29 @@ export async function deleteCachedLeaderboard(key: string): Promise<void> {
   }
 }
 
+export async function deleteCachedLeaderboards(keys: string[]): Promise<void> {
+  const uniqueKeys = Array.from(new Set(keys));
+  if (uniqueKeys.length === 0) return;
+
+  for (const key of uniqueKeys) {
+    memoryCache.delete(key);
+  }
+
+  const cache = getCacheAdapter();
+  if (!cache.available) return;
+
+  try {
+    if (cache.delMany) {
+      await cache.delMany(uniqueKeys);
+      return;
+    }
+
+    await Promise.all(uniqueKeys.map((key) => cache.del(key)));
+  } catch {
+    // Ignore cache delete failures in non-critical flow.
+  }
+}
+
 export async function fetchWithLeaderboardCache<T>(
   key: string,
   ttlSeconds: number,

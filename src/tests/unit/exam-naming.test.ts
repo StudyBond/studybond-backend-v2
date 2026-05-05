@@ -32,6 +32,18 @@ describe('examNaming utility', () => {
     expect(naming.displayNameShort).toBe('UI Mix • BIO • S008');
   });
 
+  it('formats daily challenge names with a dedicated scope', () => {
+    const separator = '\u2022';
+    const naming = buildExamDisplayNames(
+      EXAM_TYPES.DAILY_CHALLENGE,
+      ['Mathematics', 'English', 'Biology', 'Physics'],
+      1
+    );
+    expect(naming.scopeKey).toBe('DAILY:FULL');
+    expect(naming.displayNameLong).toBe(`Daily Challenge ${separator} Full Exam ${separator} Session 001`);
+    expect(naming.displayNameShort).toBe(`#Daily ${separator} Full ${separator} S001`);
+  });
+
   it('builds deterministic scope keys independent of input subject order', () => {
     const a = buildScopeKeyFromExamType(EXAM_TYPES.PRACTICE, ['Biology', 'Physics']);
     const b = buildScopeKeyFromExamType(EXAM_TYPES.PRACTICE, ['Physics', 'Biology']);

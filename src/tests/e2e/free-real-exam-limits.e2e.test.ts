@@ -111,7 +111,8 @@ async function createRealQuestions(
   subject: string,
   count: number,
   questionPool: string = QUESTION_POOLS.REAL_BANK,
-  markerPrefix = `e2e-free-real-${subject}`
+  markerPrefix = `e2e-free-real-${subject}`,
+  isFeaturedFree = false
 ): Promise<string> {
   const marker = uniqueToken(markerPrefix);
   const rows = Array.from({ length: count }).map((_, index) => ({
@@ -126,7 +127,8 @@ async function createRealQuestions(
     subject,
     topic: 'E2E Free Exam',
     questionType: 'real_past_question',
-    questionPool
+    questionPool,
+    isFeaturedFree
   }));
 
   await prisma.question.createMany({ data: rows });
@@ -196,7 +198,7 @@ function buildCorrectAnswers(questions: Array<{ id: number }>) {
 }
 
 describeE2E('Free-tier full real exam policy (HTTP e2e)', () => {
-  it('lets free users spend subject credits on subject-specific real exams from the free pool', async () => {
+  it('shows free users only admin-featured real questions for subject-specific exams', async () => {
     const fixture: E2EFixture = {
       institutionIds: [],
       userIds: [],
@@ -216,8 +218,9 @@ describeE2E('Free-tier full real exam policy (HTTP e2e)', () => {
         institution.id,
         'Biology',
         25,
-        QUESTION_POOLS.FREE_EXAM,
-        'e2e-free-partial-bio'
+        QUESTION_POOLS.REAL_BANK,
+        'e2e-featured-partial-bio',
+        true
       );
       const realUiMarker = await createRealQuestions(
         fixture,
@@ -288,11 +291,19 @@ describeE2E('Free-tier full real exam policy (HTTP e2e)', () => {
       });
       const authHeader = await createAuthHeader(fixture, user);
       const fullExamSubjects = ['Mathematics', 'English', 'Biology', 'Physics'] as const;
-      const freeMarkers: string[] = [];
+      const featuredMarkers: string[] = [];
       const realUiMarkers: string[] = [];
 
       for (const subject of fullExamSubjects) {
-        freeMarkers.push(await createRealQuestions(fixture, institution.id, subject, 25, QUESTION_POOLS.FREE_EXAM, `e2e-free-pool-${subject}`));
+        featuredMarkers.push(await createRealQuestions(
+          fixture,
+          institution.id,
+          subject,
+          25,
+          QUESTION_POOLS.REAL_BANK,
+          `e2e-featured-pool-${subject}`,
+          true
+        ));
         realUiMarkers.push(await createRealQuestions(fixture, institution.id, subject, 25, QUESTION_POOLS.REAL_BANK, `e2e-real-pool-${subject}`));
       }
 
@@ -314,7 +325,7 @@ describeE2E('Free-tier full real exam policy (HTTP e2e)', () => {
       expect(startedExam.data.questions).toHaveLength(100);
       expect(
         startedExam.data.questions.every((question: any) =>
-          freeMarkers.some((marker) => question.questionText.includes(marker))
+          featuredMarkers.some((marker) => question.questionText.includes(marker))
         )
       ).toBe(true);
       expect(

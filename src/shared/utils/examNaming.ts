@@ -10,7 +10,7 @@ const SUBJECT_CODES: Record<string, string> = {
   English: 'ENG'
 };
 
-type ExamMode = 'REAL' | 'PRACTICE' | 'MIXED' | 'DUEL' | 'GROUP';
+type ExamMode = 'REAL' | 'PRACTICE' | 'MIXED' | 'DAILY' | 'DUEL' | 'GROUP';
 
 export interface NamingResult {
   scopeKey: string;
@@ -22,6 +22,7 @@ function mapExamTypeToMode(examType: string): ExamMode {
   if (examType === EXAM_TYPES.REAL_PAST_QUESTION) return 'REAL';
   if (examType === EXAM_TYPES.PRACTICE) return 'PRACTICE';
   if (examType === EXAM_TYPES.MIXED) return 'MIXED';
+  if (examType === EXAM_TYPES.DAILY_CHALLENGE) return 'DAILY';
   if (examType === EXAM_TYPES.ONE_V_ONE_DUEL) return 'DUEL';
   return 'GROUP';
 }
@@ -35,6 +36,12 @@ function modePrefixes(mode: ExamMode): { longPrefix: string; shortPrefix: string
   }
   if (mode === 'MIXED') {
     return { longPrefix: 'UI Mixed Mode', shortPrefix: 'UI Mix' };
+  }
+  if (mode === 'DAILY') {
+    return {
+      longPrefix: 'Daily Challenge',
+      shortPrefix: '#Daily',
+    };
   }
   if (mode === 'DUEL') {
     return { longPrefix: 'UI Duel', shortPrefix: 'UI Duel' };

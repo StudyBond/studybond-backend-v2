@@ -153,6 +153,7 @@ async function main() {
     'src/tests/e2e/reports.e2e.test.ts',
     'src/tests/e2e/streaks.e2e.test.ts',
     'src/tests/e2e/free-real-exam-limits.e2e.test.ts',
+    'src/tests/e2e/daily-challenge-start.e2e.test.ts',
     'src/tests/e2e/questions-free-pool.e2e.test.ts',
     'src/tests/e2e/collaboration-start-race.e2e.test.ts',
     'src/tests/e2e/idempotency-exams.e2e.test.ts',

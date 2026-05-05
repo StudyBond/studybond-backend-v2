@@ -47,6 +47,7 @@ import {
   buildPremiumDeviceOtpTemplate
 } from '../../shared/email/email.templates';
 import { institutionContextService } from '../../shared/institutions/context';
+import { decideRefreshTokenRotation } from '../../shared/utils/refreshTokenRotation';
 
 type SessionUser = Pick<AuthManagedUser, 'id' | 'email' | 'fullName' | 'isPremium' | 'role'>;
 const PASSWORD_RESET_REQUEST_MESSAGE =
@@ -2001,7 +2002,23 @@ export class AuthService {
         ? payload.tokenVersion
         : ((session as { tokenVersion?: number }).tokenVersion ?? 0);
 
-    if ((session as { tokenVersion?: number }).tokenVersion !== expectedTokenVersion) {
+    const sessionTokenVersion = (session as { tokenVersion?: number }).tokenVersion ?? 0;
+    const refreshDecision = decideRefreshTokenRotation(sessionTokenVersion, expectedTokenVersion);
+
+    if (refreshDecision.action === 'reuse-current') {
+      return generateTokens(
+        {
+          id: session.user.id,
+          email: session.user.email,
+          role: session.user.role
+        },
+        session.id,
+        payload.deviceId,
+        refreshDecision.tokenVersion
+      );
+    }
+
+    if (refreshDecision.action === 'reject') {
       throw new AuthError('Refresh token replay detected. Please log in again.', 401, 'SESSION_INVALID');
     }
 
@@ -2009,7 +2026,7 @@ export class AuthService {
       where: {
         id: session.id,
         isActive: true,
-        tokenVersion: expectedTokenVersion,
+        tokenVersion: sessionTokenVersion,
         authPolicyVersion: session.user.authPolicyVersion
       },
       data: {
@@ -2021,7 +2038,6 @@ export class AuthService {
       throw new AuthError('Session rotation failed due to a concurrent refresh attempt.', 401, 'SESSION_INVALID');
     }
 
-    const nextTokenVersion = expectedTokenVersion + 1;
     return generateTokens(
       {
         id: session.user.id,
@@ -2030,7 +2046,7 @@ export class AuthService {
       },
       session.id,
       payload.deviceId,
-      nextTokenVersion
+      refreshDecision.nextTokenVersion
     );
   }
 

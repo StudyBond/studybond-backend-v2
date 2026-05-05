@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../app';
 import prisma from '../../config/database';
-import { EXAM_CONFIG, EXAM_TYPES } from '../../modules/exams/exams.constants';
+import { EXAM_CONFIG, EXAM_STATUS, EXAM_TYPES } from '../../modules/exams/exams.constants';
 import { QUESTION_POOLS } from '../../modules/questions/questions.constants';
 import { generateTokens } from '../../shared/utils/jwt';
 
@@ -290,6 +290,166 @@ describeE2E('Exam start defaults (HTTP e2e)', () => {
 
       expect(selectedQuestions).toHaveLength(100);
       expect(selectedQuestions.every((question) => question.questionType === 'real_past_question')).toBe(true);
+    } finally {
+      await cleanupFixture(fixture);
+      await app.close();
+    }
+  });
+
+  it('reuses an existing in-progress full exam instead of crashing on REAL:FULL scope conflicts', async () => {
+    const fixture: E2EFixture = {
+      institutionIds: [],
+      userIds: [],
+      sessionIds: [],
+      questionIds: []
+    };
+
+    const app = await buildApp();
+    try {
+      const institution = await createInstitutionFixture(fixture, 'FULLRESUME');
+      const user = await createUserFixture(fixture, {
+        targetInstitutionId: institution.id
+      });
+      const authHeader = await createAuthHeader(fixture, user);
+      const fullExamSubjects = ['English', 'Physics', 'Chemistry', 'Biology'] as const;
+
+      for (const subject of fullExamSubjects) {
+        await createQuestions(fixture, institution.id, subject, 'real_past_question', 30);
+      }
+
+      const firstResponse = await app.inject({
+        method: 'POST',
+        url: '/api/exams/start',
+        headers: {
+          authorization: authHeader,
+          'idempotency-key': uniqueToken('start-full-resume-first')
+        },
+        payload: {
+          examType: EXAM_TYPES.REAL_PAST_QUESTION,
+          subjects: fullExamSubjects
+        }
+      });
+
+      expect(firstResponse.statusCode).toBe(201);
+      const firstBody = firstResponse.json() as any;
+
+      const secondResponse = await app.inject({
+        method: 'POST',
+        url: '/api/exams/start',
+        headers: {
+          authorization: authHeader,
+          'idempotency-key': uniqueToken('start-full-resume-second')
+        },
+        payload: {
+          examType: EXAM_TYPES.REAL_PAST_QUESTION,
+          subjects: fullExamSubjects
+        }
+      });
+
+      expect(secondResponse.statusCode).toBe(201);
+      const secondBody = secondResponse.json() as any;
+      expect(secondBody.data.examId).toBe(firstBody.data.examId);
+      expect(secondBody.data.sessionNumber).toBe(firstBody.data.sessionNumber);
+      expect(secondBody.data.questions).toHaveLength(100);
+
+      const inProgressFullExams = await prisma.exam.findMany({
+        where: {
+          userId: user.id,
+          institutionId: institution.id,
+          nameScopeKey: 'REAL:FULL',
+          status: EXAM_STATUS.IN_PROGRESS as any
+        },
+        select: { id: true }
+      });
+
+      expect(inProgressFullExams).toHaveLength(1);
+      expect(inProgressFullExams[0].id).toBe(firstBody.data.examId);
+    } finally {
+      await cleanupFixture(fixture);
+      await app.close();
+    }
+  });
+
+  it('abandons an expired in-progress full exam before starting a fresh one', async () => {
+    const fixture: E2EFixture = {
+      institutionIds: [],
+      userIds: [],
+      sessionIds: [],
+      questionIds: []
+    };
+
+    const app = await buildApp();
+    try {
+      const institution = await createInstitutionFixture(fixture, 'FULLEXPIRED');
+      const user = await createUserFixture(fixture, {
+        targetInstitutionId: institution.id
+      });
+      const authHeader = await createAuthHeader(fixture, user);
+      const fullExamSubjects = ['English', 'Physics', 'Chemistry', 'Biology'] as const;
+
+      for (const subject of fullExamSubjects) {
+        await createQuestions(fixture, institution.id, subject, 'real_past_question', 30);
+      }
+
+      const firstResponse = await app.inject({
+        method: 'POST',
+        url: '/api/exams/start',
+        headers: {
+          authorization: authHeader,
+          'idempotency-key': uniqueToken('start-full-expired-first')
+        },
+        payload: {
+          examType: EXAM_TYPES.REAL_PAST_QUESTION,
+          subjects: fullExamSubjects
+        }
+      });
+
+      expect(firstResponse.statusCode).toBe(201);
+      const firstBody = firstResponse.json() as any;
+      const firstExamId = firstBody.data.examId as number;
+
+      await prisma.exam.update({
+        where: { id: firstExamId },
+        data: {
+          startedAt: new Date(
+            Date.now() -
+              (
+                EXAM_CONFIG.FULL_EXAM_DURATION_SECONDS +
+                EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS +
+                60
+              ) * 1000
+          )
+        }
+      });
+
+      const secondResponse = await app.inject({
+        method: 'POST',
+        url: '/api/exams/start',
+        headers: {
+          authorization: authHeader,
+          'idempotency-key': uniqueToken('start-full-expired-second')
+        },
+        payload: {
+          examType: EXAM_TYPES.REAL_PAST_QUESTION,
+          subjects: fullExamSubjects
+        }
+      });
+
+      expect(secondResponse.statusCode).toBe(201);
+      const secondBody = secondResponse.json() as any;
+      expect(secondBody.data.examId).not.toBe(firstExamId);
+      expect(secondBody.data.sessionNumber).toBe(2);
+
+      const originalExam = await prisma.exam.findUniqueOrThrow({
+        where: { id: firstExamId },
+        select: {
+          status: true,
+          completedAt: true
+        }
+      });
+
+      expect(originalExam.status).toBe(EXAM_STATUS.ABANDONED);
+      expect(originalExam.completedAt).not.toBeNull();
     } finally {
       await cleanupFixture(fixture);
       await app.close();

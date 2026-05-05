@@ -25,12 +25,7 @@ function buildRealQuestionPoolFilter(options: {
 }) {
     if (options.isFeaturedFree) {
         return {
-            OR: [
-                { isFeaturedFree: true },
-                // Backward-compatible fallback for legacy free-pool rows that
-                // were curated via questionPool before the featured flag rollout.
-                { questionPool: QUESTION_POOLS.FREE_EXAM }
-            ]
+            isFeaturedFree: true
         };
     }
 
