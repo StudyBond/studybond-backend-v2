@@ -19,6 +19,26 @@ interface QuestionSelectionOptions {
     isFeaturedFree?: boolean;
 }
 
+function buildRealQuestionPoolFilter(options: {
+    realQuestionPool: string;
+    isFeaturedFree?: boolean;
+}) {
+    if (options.isFeaturedFree) {
+        return {
+            OR: [
+                { isFeaturedFree: true },
+                // Backward-compatible fallback for legacy free-pool rows that
+                // were curated via questionPool before the featured flag rollout.
+                { questionPool: QUESTION_POOLS.FREE_EXAM }
+            ]
+        };
+    }
+
+    return {
+        questionPool: options.realQuestionPool
+    };
+}
+
 /* Fisher-Yates shuffle algorithm for true randomization, O(n) time complexity, cryptographically fair */
 function shuffleArray<T>(array: T[]): T[] {
     const shuffled = [...array];
@@ -468,7 +488,10 @@ export async function selectQuestionsForExam(
     const realQuestionPool = options.realQuestionPool ?? QUESTION_POOLS.REAL_BANK;
     const institutionId = options.institutionId;
     const topicBlueprints = options.topicBlueprints ?? null;
-    const featuredFreeFilter = options.isFeaturedFree ? { isFeaturedFree: true } : {};
+    const realQuestionPoolFilter = buildRealQuestionPoolFilter({
+        realQuestionPool,
+        isFeaturedFree: options.isFeaturedFree
+    });
 
     for (const subject of subjects) {
         const normalizedSubject = normalizeSubjectLabel(subject);
@@ -483,8 +506,7 @@ export async function selectQuestionsForExam(
                         in: subjectVariants
                     },
                     questionType: QUESTION_TYPES.REAL_PAST_QUESTION,
-                    questionPool: realQuestionPool,
-                    ...featuredFreeFilter,
+                    ...realQuestionPoolFilter,
                     id: {
                         notIn: excludeQuestionIds.length > 0 ? excludeQuestionIds : undefined
                     }
@@ -533,8 +555,7 @@ export async function selectQuestionsForExam(
                             in: subjectVariants
                         },
                         questionType: QUESTION_TYPES.REAL_PAST_QUESTION,
-                        questionPool: realQuestionPool,
-                        ...featuredFreeFilter,
+                        ...realQuestionPoolFilter,
                         id: {
                             notIn: excludeQuestionIds.length > 0 ? excludeQuestionIds : undefined
                         }
@@ -594,7 +615,7 @@ export async function selectQuestionsForExam(
                         in: subjectVariants
                     },
                     ...(examType === EXAM_TYPES.REAL_PAST_QUESTION
-                        ? { questionPool: realQuestionPool, ...featuredFreeFilter }
+                        ? realQuestionPoolFilter
                         : { questionPool: QUESTION_POOLS.PRACTICE }),
                     questionType: questionTypeFilter,
                     id: {

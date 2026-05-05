@@ -62,6 +62,7 @@ async function createInstitutionFixture(fixture: E2EFixture, label: string) {
       collaborationDurationSeconds: 90 * 60,
       freeRealExamCount: 1,
       freeFullRealTotalAttempts: 3,
+      freeQuestionsPerSubject: 25,
       premiumDailyRealExamLimit: 5,
       collaborationGateRealExams: 2,
       defaultFullExamSource: 'REAL_PAST_QUESTION',
@@ -195,7 +196,7 @@ function buildCorrectAnswers(questions: Array<{ id: number }>) {
 }
 
 describeE2E('Free-tier full real exam policy (HTTP e2e)', () => {
-  it('blocks free users from starting subject-specific real exams', async () => {
+  it('lets free users spend subject credits on subject-specific real exams from the free pool', async () => {
     const fixture: E2EFixture = {
       institutionIds: [],
       userIds: [],
@@ -205,8 +206,27 @@ describeE2E('Free-tier full real exam policy (HTTP e2e)', () => {
 
     const app = await buildApp();
     try {
-      const user = await createUserFixture(fixture);
+      const institution = await createInstitutionFixture(fixture, 'FREEPARTIAL');
+      const user = await createUserFixture(fixture, {
+        targetInstitutionId: institution.id
+      });
       const authHeader = await createAuthHeader(fixture, user);
+      const freeMarker = await createRealQuestions(
+        fixture,
+        institution.id,
+        'Biology',
+        25,
+        QUESTION_POOLS.FREE_EXAM,
+        'e2e-free-partial-bio'
+      );
+      const realUiMarker = await createRealQuestions(
+        fixture,
+        institution.id,
+        'Biology',
+        25,
+        QUESTION_POOLS.REAL_BANK,
+        'e2e-real-partial-bio'
+      );
 
       const response = await app.inject({
         method: 'POST',
@@ -221,13 +241,31 @@ describeE2E('Free-tier full real exam policy (HTTP e2e)', () => {
         }
       });
 
-      expect(response.statusCode).toBe(403);
-      expect(response.json()).toEqual(expect.objectContaining({
-        success: false,
-        error: expect.objectContaining({
-          message: 'Free users can only take the full UI real exam. Upgrade to premium to unlock subject-specific real exams.'
-        })
-      }));
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as any;
+      expect(body.data.examType).toBe(EXAM_TYPES.REAL_PAST_QUESTION);
+      expect(body.data.questions).toHaveLength(25);
+      expect(
+        body.data.questions.every((question: any) =>
+          question.questionText.includes(freeMarker)
+        )
+      ).toBe(true);
+      expect(
+        body.data.questions.some((question: any) =>
+          question.questionText.includes(realUiMarker)
+        )
+      ).toBe(false);
+
+      const updatedUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          freeSubjectCreditsUsed: true,
+          freeSubjectsTaken: true
+        }
+      });
+
+      expect(updatedUser?.freeSubjectCreditsUsed).toBe(1);
+      expect(updatedUser?.freeSubjectsTaken).toContain('Biology');
     } finally {
       await cleanupFixture(fixture);
       await app.close();

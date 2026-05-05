@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../app';
 import prisma from '../../config/database';
 import { EXAM_CONFIG, EXAM_TYPES } from '../../modules/exams/exams.constants';
+import { QUESTION_POOLS } from '../../modules/questions/questions.constants';
 import { generateTokens } from '../../shared/utils/jwt';
 
 const runIntegration = process.env.RUN_INTEGRATION_TESTS === 'true';
 const describeE2E = runIntegration ? describe : describe.skip;
 
 interface E2EFixture {
+  institutionIds: number[];
   userIds: number[];
   sessionIds: string[];
   questionIds: number[];
@@ -33,6 +35,48 @@ async function createUserFixture(fixture: E2EFixture, input: Partial<any> = {}) 
   });
   fixture.userIds.push(user.id);
   return user;
+}
+
+async function createInstitutionFixture(fixture: E2EFixture, label: string) {
+  const code = `${label}-${randomUUID().slice(0, 8)}`.replace(/-/g, '').slice(0, 12).toUpperCase();
+  const institution = await prisma.institution.create({
+    data: {
+      code,
+      name: `${label} ${code}`,
+      slug: `${label.toLowerCase()}-${code.toLowerCase()}`
+    }
+  });
+
+  await prisma.institutionExamConfig.create({
+    data: {
+      institutionId: institution.id,
+      trackCode: 'POST_UTME',
+      trackName: 'Post-UTME',
+      questionsPerSubject: 25,
+      fullExamQuestions: 100,
+      maxSubjects: 4,
+      singleSubjectDurationSeconds: 22 * 60,
+      twoSubjectDurationSeconds: 44 * 60,
+      threeSubjectDurationSeconds: 66 * 60,
+      fullExamDurationSeconds: 90 * 60,
+      collaborationDurationSeconds: 90 * 60,
+      freeRealExamCount: 1,
+      freeFullRealTotalAttempts: 3,
+      freeQuestionsPerSubject: 25,
+      premiumDailyRealExamLimit: 5,
+      collaborationGateRealExams: 2,
+      defaultFullExamSource: 'REAL_PAST_QUESTION',
+      defaultPartialExamSource: 'MIXED',
+      defaultCollabSource: 'REAL_PAST_QUESTION',
+      allowMixedPartialExams: true,
+      allowMixedFullExams: false,
+      allowPracticeCollaboration: true,
+      allowMixedCollaboration: true
+    }
+  });
+
+  fixture.institutionIds.push(institution.id);
+  return institution;
 }
 
 async function createAuthHeader(fixture: E2EFixture, user: any): Promise<string> {
@@ -63,12 +107,14 @@ async function createAuthHeader(fixture: E2EFixture, user: any): Promise<string>
 
 async function createQuestions(
   fixture: E2EFixture,
+  institutionId: number,
   subject: string,
   questionType: 'real_past_question' | 'practice',
   count: number
 ): Promise<void> {
   const marker = uniqueToken(`e2e-${questionType}-${subject}`);
   const rows = Array.from({ length: count }).map((_, index) => ({
+    institutionId,
     questionText: `${marker} ${subject} #${index}`,
     hasImage: false,
     optionA: 'Option A',
@@ -78,13 +124,18 @@ async function createQuestions(
     correctAnswer: 'A',
     subject,
     topic: 'E2E Start Defaults',
-    questionType
+    questionType,
+    questionPool:
+      questionType === 'practice'
+        ? QUESTION_POOLS.PRACTICE
+        : QUESTION_POOLS.REAL_BANK
   }));
 
   await prisma.question.createMany({ data: rows });
 
   const created = await prisma.question.findMany({
     where: {
+      institutionId,
       questionText: { contains: marker },
       subject
     },
@@ -128,11 +179,18 @@ async function cleanupFixture(fixture: E2EFixture): Promise<void> {
       where: { id: { in: fixture.questionIds } }
     });
   }
+
+  if (fixture.institutionIds.length > 0) {
+    await prisma.institution.deleteMany({
+      where: { id: { in: fixture.institutionIds } }
+    });
+  }
 }
 
 describeE2E('Exam start defaults (HTTP e2e)', () => {
   it('defaults single-subject exams to MIXED with a 13/12 source split and 22-minute timer', async () => {
     const fixture: E2EFixture = {
+      institutionIds: [],
       userIds: [],
       sessionIds: [],
       questionIds: []
@@ -140,10 +198,13 @@ describeE2E('Exam start defaults (HTTP e2e)', () => {
 
     const app = await buildApp();
     try {
-      const user = await createUserFixture(fixture);
+      const institution = await createInstitutionFixture(fixture, 'STARTDEFAULTS');
+      const user = await createUserFixture(fixture, {
+        targetInstitutionId: institution.id
+      });
       const authHeader = await createAuthHeader(fixture, user);
-      await createQuestions(fixture, 'Biology', 'real_past_question', 20);
-      await createQuestions(fixture, 'Biology', 'practice', 20);
+      await createQuestions(fixture, institution.id, 'Biology', 'real_past_question', 20);
+      await createQuestions(fixture, institution.id, 'Biology', 'practice', 20);
 
       const response = await app.inject({
         method: 'POST',
@@ -183,6 +244,7 @@ describeE2E('Exam start defaults (HTTP e2e)', () => {
 
   it('defaults full exams to real UI questions only with a 90-minute timer', async () => {
     const fixture: E2EFixture = {
+      institutionIds: [],
       userIds: [],
       sessionIds: [],
       questionIds: []
@@ -190,12 +252,15 @@ describeE2E('Exam start defaults (HTTP e2e)', () => {
 
     const app = await buildApp();
     try {
-      const user = await createUserFixture(fixture);
+      const institution = await createInstitutionFixture(fixture, 'FULLDEFAULTS');
+      const user = await createUserFixture(fixture, {
+        targetInstitutionId: institution.id
+      });
       const authHeader = await createAuthHeader(fixture, user);
       const fullExamSubjects = ['Mathematics', 'English', 'Biology', 'Physics'] as const;
 
       for (const subject of fullExamSubjects) {
-        await createQuestions(fixture, subject, 'real_past_question', 30);
+        await createQuestions(fixture, institution.id, subject, 'real_past_question', 30);
       }
 
       const response = await app.inject({
