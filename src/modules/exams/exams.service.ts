@@ -101,7 +101,15 @@ export class ExamsService {
   }
 
   private async bumpExamHistoryVersion(userId: number): Promise<void> {
-    await getCacheAdapter().incr(this.examHistoryVersionKey(userId));
+    const cache = getCacheAdapter();
+    if (!cache.available) return;
+
+    try {
+      await cache.incr(this.examHistoryVersionKey(userId));
+    } catch {
+      // Cache invalidation improves freshness, but exam start/submit flows must
+      // still succeed if Redis is temporarily unavailable.
+    }
   }
 
   private async enforceStartRateLimit(userId: number): Promise<void> {
