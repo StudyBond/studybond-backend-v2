@@ -80,7 +80,9 @@ export const answerSchema = z.object({
         .min(0, 'Time spent cannot be negative')
         .max(5400, 'Time spent cannot exceed exam duration')
         .optional()
-        .default(0)
+        .default(0),
+
+    isFlagged: z.boolean().optional().default(false)
 }).strict();
 
 

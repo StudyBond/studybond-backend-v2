@@ -14,6 +14,7 @@ export interface AnswerInput {
     questionId: number;
     answer: string | null;
     timeSpentSeconds?: number;
+    isFlagged?: boolean;
 }
 
 export interface SubmitExamInput {

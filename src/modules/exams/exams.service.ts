@@ -1,6 +1,7 @@
 // All database operations use atomic transactions to avoid race conditions
 
 import { prisma } from "../../config/database";
+import { bookmarksService } from "../bookmarks/bookmarks.service";
 import { AppError } from "../../shared/errors/AppError";
 import { getCacheAdapter, getJson, setJson } from "../../shared/cache/cache";
 import {
@@ -1243,6 +1244,19 @@ export class ExamsService {
         } catch {
           // Non-blocking
         }
+      }
+
+      // Handle auto-bookmarking for flagged questions (non-critical, background)
+      const flaggedIds = input.answers
+        .filter((a: any) => a.isFlagged)
+        .map((a: any) => a.questionId);
+
+      if (flaggedIds.length > 0) {
+        bookmarksService
+          .createBulkBookmarksFromExam(userId, flaggedIds, examId)
+          .catch((err) => {
+            console.error("[ExamsService] Auto-bookmark failed:", err);
+          });
       }
 
       return {

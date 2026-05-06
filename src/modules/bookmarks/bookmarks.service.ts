@@ -421,6 +421,75 @@ export class BookmarksService {
       message: 'Bookmark removed successfully.'
     };
   }
+
+  /**
+   * Automatically bookmarks a list of questions flagged during an exam.
+   * Silently respects user limits and skips duplicates.
+   */
+  async createBulkBookmarksFromExam(userId: number, questionIds: number[], examId: number) {
+    if (questionIds.length === 0) return;
+
+    const now = new Date();
+    const expiryDate = buildExpiryDate(now);
+
+    return this.runTransaction(async (tx) => {
+      // 1. Lock user for consistent count check
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, isPremium: true }
+      });
+      if (!user) return;
+
+      // 2. Cleanup expired bookmarks first
+      await this.purgeExpiredBookmarksTx(tx, userId, now);
+
+      // 3. Check current active count
+      const currentCount = await tx.bookmarkedQuestion.count({
+        where: this.activeBookmarkWhere(userId)
+      });
+
+      const maxAllowed = user.isPremium
+        ? BOOKMARK_LIMITS.PREMIUM_USER_MAX_BOOKMARKS
+        : BOOKMARK_LIMITS.FREE_USER_MAX_BOOKMARKS;
+
+      const remainingSlots = Math.max(0, maxAllowed - currentCount);
+      if (remainingSlots === 0) return;
+
+      // 4. Filter out questions already bookmarked and active
+      const existing = await tx.bookmarkedQuestion.findMany({
+        where: {
+          userId,
+          questionId: { in: questionIds },
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: now } }
+          ]
+        },
+        select: { questionId: true }
+      });
+      
+      const existingIds = new Set(existing.map(e => e.questionId));
+      const newQuestionIds = questionIds.filter(id => !existingIds.has(id));
+
+      if (newQuestionIds.length === 0) return;
+
+      // 5. Take only what fits in the remaining slots
+      const toInsert = newQuestionIds.slice(0, remainingSlots);
+
+      // 6. Bulk insert using createMany
+      await tx.bookmarkedQuestion.createMany({
+        data: toInsert.map(qid => ({
+          userId,
+          questionId: qid,
+          examId,
+          expiresAt: expiryDate
+        })),
+        skipDuplicates: true
+      });
+    });
+  }
 }
 
 export const bookmarksService = new BookmarksService();
