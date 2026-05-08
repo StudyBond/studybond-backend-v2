@@ -58,6 +58,22 @@ export async function questionsRoutes(app: FastifyInstance) {
         }
     }, controller.getQuestions);
 
+    // Distinct years for filter dropdowns
+    app.get('/years', {
+        schema: {
+            tags: ['Questions'],
+            summary: 'List distinct question years',
+            description: 'Return the set of distinct exam years present in the question bank, sorted descending.',
+            querystring: z.object({
+                institutionCode: z.string().optional()
+            }),
+            security: [{ bearerAuth: [] }],
+            response: withStandardErrorResponses({
+                200: z.object({ years: z.array(z.number().int()) }).strict()
+            })
+        }
+    }, controller.getDistinctYears);
+
     app.post('/assets/upload/:kind', {
         schema: {
             tags: ['Questions'],

@@ -557,6 +557,20 @@ export class QuestionsService {
     return data;
   }
 
+  async getDistinctYears(institutionCode?: string): Promise<number[]> {
+    const institution = await institutionContextService.resolveByCode(institutionCode);
+    const rows = await prisma.question.findMany({
+      where: {
+        institutionId: institution.id,
+        year: { not: null }
+      },
+      select: { year: true },
+      distinct: ['year'],
+      orderBy: { year: 'desc' }
+    });
+    return rows.map((r: any) => r.year as number);
+  }
+
   private mapToResponse(q: any): QuestionResponse {
     return {
       id: q.id,

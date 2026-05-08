@@ -46,6 +46,15 @@ export class QuestionsController {
         return reply.send(result);
     };
 
+    getDistinctYears = async (
+        request: FastifyRequest,
+        reply: FastifyReply
+    ) => {
+        const institutionCode = (request.query as any)?.institutionCode as string | undefined;
+        const years = await this.service.getDistinctYears(institutionCode);
+        return reply.send({ years });
+    };
+
     getQuestionById = async (
         request: FastifyRequest<{ Params: { id: number } }>,
         reply: FastifyReply
