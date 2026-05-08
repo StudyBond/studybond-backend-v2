@@ -9,6 +9,8 @@ export async function collaborationPlugin(app: FastifyInstance) {
   const collaborationService = new CollaborationService(app, sessionManager);
   const wsHandlers = new CollaborationWebSocketHandlers(app, collaborationService, sessionManager);
 
+  app.decorate('collaborationService', collaborationService);
+
   await app.register(collaborationRoutes as any, {
     prefix: '/collaboration',
     collaborationService,

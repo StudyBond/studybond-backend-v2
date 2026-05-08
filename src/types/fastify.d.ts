@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { JWT } from '@fastify/jwt';
 import { MetricsRegistry } from '../shared/metrics/registry';
+import type { CollaborationService } from '../modules/collaboration/collaboration.service';
 
 interface JwtUserPayload {
   userId: number;
@@ -19,6 +20,7 @@ declare module 'fastify' {
       client: any;
     };
     metrics: MetricsRegistry;
+    collaborationService?: CollaborationService;
   }
 
   interface FastifyRequest {

@@ -14,7 +14,7 @@ import {
 import { successEnvelopeSchema, withStandardErrorResponses } from '../../shared/openapi/responses';
 
 export async function examsRoutes(app: FastifyInstance) {
-    const controller = new ExamsController();
+    const controller = new ExamsController(app);
 
     /* POST /exams/start - Start a new exam session
      * Body: { examType: 'REAL_PAST_QUESTION' | 'PRACTICE', subjects: string[] }

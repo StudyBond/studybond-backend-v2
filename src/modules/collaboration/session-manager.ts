@@ -29,7 +29,33 @@ export class SessionManager {
     if (!redisClient) return;
 
     this.publisher = redisClient;
-    this.subscriber = redisClient.duplicate();
+
+    // The main Redis client is configured with `retryStrategy: () => null`
+    // and `reconnectOnError: () => false` (correct for a cache adapter —
+    // fail fast, don't block API requests). But `duplicate()` inherits
+    // those options, so the subscriber would NEVER reconnect after a
+    // Redis hiccup — permanently killing pub/sub event delivery.
+    //
+    // Override the reconnection policy for the subscriber: pub/sub REQUIRES
+    // a persistent connection, so we enable exponential backoff reconnection.
+    this.subscriber = redisClient.duplicate({
+      retryStrategy: (times: number) => {
+        // Exponential backoff: 500ms, 1s, 2s, 4s, ... capped at 15s.
+        const delay = Math.min(times * 500, 15_000);
+        this.app.log.info(
+          { attempt: times, delayMs: delay },
+          'Redis subscriber reconnecting for collaboration pub/sub'
+        );
+        return delay;
+      },
+      reconnectOnError: () => true,
+      enableOfflineQueue: true,
+      maxRetriesPerRequest: null, // Allow unlimited retries for subscriber
+    });
+
+    this.subscriber.on('error', (error: Error) => {
+      this.app.log.debug({ error }, 'Redis subscriber error (will auto-reconnect)');
+    });
 
     this.subscriber.on('message', (channel: string, rawMessage: string) => {
       const prefix = this.channelPrefix;

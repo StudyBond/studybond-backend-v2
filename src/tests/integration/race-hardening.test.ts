@@ -523,6 +523,183 @@ describeIntegration('DB-backed race hardening', () => {
     }
   }, 120000);
 
+  it('finalizes collaboration duel submissions from the shared exam submit path and emits completion events', async () => {
+    const fixture = createFixtureState();
+    const app = createServiceAppStub();
+    const manager = new SessionManager(app);
+    const collaborationService = new CollaborationService(app, manager);
+    app.collaborationService = collaborationService;
+
+    const emittedEvents: Array<{ type: string; payload: Record<string, unknown> }> = [];
+    let unsubscribe: (() => Promise<void>) | null = null;
+
+    try {
+      const [host, opponent] = await Promise.all([
+        createUser(fixture),
+        createUser(fixture)
+      ]);
+      const [question] = await createRealPastQuestions(fixture, 'Biology', 1);
+
+      const session = await prisma.collaborationSession.create({
+        data: {
+          sessionType: COLLAB_SESSION_TYPE.ONE_V_ONE_DUEL as any,
+          hostUserId: host.id,
+          sessionCode: uniqueSessionCode('DUEL'),
+          nameScopeKey: buildScopeKeyFromExamType(EXAM_TYPES.ONE_V_ONE_DUEL, ['Biology']),
+          sessionNumber: 1,
+          subjectsIncluded: ['Biology'],
+          totalQuestions: 1,
+          questionSource: COLLAB_QUESTION_SOURCE.REAL_PAST_QUESTION as any,
+          status: COLLAB_SESSION_STATUS.IN_PROGRESS as any,
+          isLocked: true,
+          maxParticipants: 2,
+          startedAt: new Date()
+        }
+      });
+      fixture.sessionIds.push(session.id);
+
+      await prisma.sessionParticipant.createMany({
+        data: [
+          {
+            sessionId: session.id,
+            userId: host.id,
+            participantState: PARTICIPANT_STATE.READY as any
+          },
+          {
+            sessionId: session.id,
+            userId: opponent.id,
+            participantState: PARTICIPANT_STATE.READY as any
+          }
+        ]
+      });
+
+      const [hostExam, opponentExam] = await Promise.all([
+        prisma.exam.create({
+          data: {
+            userId: host.id,
+            examType: EXAM_TYPES.ONE_V_ONE_DUEL as any,
+            nameScopeKey: 'DUEL:BIO',
+            sessionNumber: 1,
+            subjectsIncluded: ['Biology'],
+            totalQuestions: 1,
+            score: 0,
+            percentage: 0,
+            spEarned: 0,
+            isCollaboration: true,
+            collaborationSessionId: session.id,
+            status: EXAM_STATUS.IN_PROGRESS as any,
+            startedAt: new Date()
+          }
+        }),
+        prisma.exam.create({
+          data: {
+            userId: opponent.id,
+            examType: EXAM_TYPES.ONE_V_ONE_DUEL as any,
+            nameScopeKey: 'DUEL:BIO',
+            sessionNumber: 1,
+            subjectsIncluded: ['Biology'],
+            totalQuestions: 1,
+            score: 0,
+            percentage: 0,
+            spEarned: 0,
+            isCollaboration: true,
+            collaborationSessionId: session.id,
+            status: EXAM_STATUS.IN_PROGRESS as any,
+            startedAt: new Date()
+          }
+        })
+      ]);
+
+      await prisma.examAnswer.createMany({
+        data: [
+          {
+            examId: hostExam.id,
+            questionId: question.id,
+            userAnswer: null,
+            isCorrect: false,
+            timeSpentSeconds: 0
+          },
+          {
+            examId: opponentExam.id,
+            questionId: question.id,
+            userAnswer: null,
+            isCorrect: false,
+            timeSpentSeconds: 0
+          }
+        ]
+      });
+
+      unsubscribe = await manager.subscribe(session.id, (event) => {
+        emittedEvents.push({ type: event.type, payload: event.payload });
+      });
+
+      const examsService = new ExamsService(app);
+
+      await examsService.submitExam(host.id, hostExam.id, {
+        answers: [
+          {
+            questionId: question.id,
+            answer: 'A',
+            timeSpentSeconds: 3
+          }
+        ]
+      } as any, uniqueToken('duel-submit-host'));
+
+      const afterHostSubmit = await prisma.collaborationSession.findUniqueOrThrow({
+        where: { id: session.id },
+        include: {
+          participants: {
+            orderBy: {
+              joinedAt: 'asc'
+            }
+          }
+        }
+      });
+
+      expect(afterHostSubmit.status).toBe(COLLAB_SESSION_STATUS.IN_PROGRESS);
+      expect(afterHostSubmit.participants.find((participant) => participant.userId === host.id)?.participantState).toBe(PARTICIPANT_STATE.FINISHED);
+      expect(afterHostSubmit.participants.find((participant) => participant.userId === opponent.id)?.participantState).toBe(PARTICIPANT_STATE.READY);
+
+      await examsService.submitExam(opponent.id, opponentExam.id, {
+        answers: [
+          {
+            questionId: question.id,
+            answer: 'B',
+            timeSpentSeconds: 4
+          }
+        ]
+      } as any, uniqueToken('duel-submit-opponent'));
+
+      const completedSession = await prisma.collaborationSession.findUniqueOrThrow({
+        where: { id: session.id },
+        include: {
+          participants: {
+            orderBy: {
+              joinedAt: 'asc'
+            }
+          }
+        }
+      });
+
+      expect(completedSession.status).toBe(COLLAB_SESSION_STATUS.COMPLETED);
+      expect(completedSession.participants.map((participant) => participant.participantState)).toEqual([
+        PARTICIPANT_STATE.FINISHED,
+        PARTICIPANT_STATE.FINISHED
+      ]);
+      expect(completedSession.participants.find((participant) => participant.userId === host.id)?.finalRank).toBe(1);
+      expect(completedSession.participants.find((participant) => participant.userId === opponent.id)?.finalRank).toBe(2);
+
+      expect(emittedEvents.filter((event) => event.type === 'finished')).toHaveLength(2);
+      expect(emittedEvents.filter((event) => event.type === 'session_completed')).toHaveLength(1);
+    } finally {
+      if (unsubscribe) {
+        await unsubscribe();
+      }
+      await manager.close();
+      await cleanupFixture(fixture);
+    }
+  }, 120000);
+
   it('allows only one successful join when two users race for final collaboration slot', async () => {
     const fixture = createFixtureState();
     try {

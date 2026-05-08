@@ -1,6 +1,7 @@
 // Note : All business logic has been delegated to ExamsService so these are the HTTP request handlers for exam endpoints
 
 import { FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { ExamsService } from './exams.service';
 import {
     startExamSchema,
@@ -17,8 +18,8 @@ import { resolveIdempotencyKey } from '../../shared/idempotency/idempotency';
 export class ExamsController {
     private examsService: ExamsService;
 
-    constructor() {
-        this.examsService = new ExamsService();
+    constructor(app?: FastifyInstance) {
+        this.examsService = new ExamsService(app);
     }
 
     /* GET /exams/eligibility - Get current daily limits and credits */

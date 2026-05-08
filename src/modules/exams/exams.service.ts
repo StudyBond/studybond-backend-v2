@@ -1,5 +1,6 @@
 // All database operations use atomic transactions to avoid race conditions
 
+import type { FastifyInstance } from 'fastify';
 import { prisma } from "../../config/database";
 import { bookmarksService } from "../bookmarks/bookmarks.service";
 import { AppError } from "../../shared/errors/AppError";
@@ -56,6 +57,7 @@ import {
   institutionExamConfigService,
   type InstitutionExamRuntimeConfig,
 } from "../../shared/institutions/exam-config";
+import { finalizeCollaborationSubmission } from '../collaboration/collaboration-completion';
 
 export class ExamsService {
   private static readonly EXAM_HISTORY_CACHE_TTL_SECONDS = Number.parseInt(
@@ -77,8 +79,10 @@ export class ExamsService {
   );
 
   private readonly leaderboardService: LeaderboardService;
+  private readonly app?: FastifyInstance;
 
-  constructor() {
+  constructor(app?: FastifyInstance) {
+    this.app = app;
     this.leaderboardService = new LeaderboardService();
   }
 
@@ -1167,7 +1171,18 @@ export class ExamsService {
         // Update question statistics
         await updateQuestionStats(tx, gradedAnswers);
 
-        return { userStats };
+        const collaborationRealtime =
+          exam.isCollaboration && exam.collaborationSessionId
+            ? await finalizeCollaborationSubmission(tx, {
+                sessionId: exam.collaborationSessionId,
+                userId,
+                finishedAt: now,
+                score: scoring.rawScore,
+                spEarned: scoring.spEarned,
+              })
+            : null;
+
+        return { userStats, collaborationRealtime };
       });
 
       // Build response with full question details
@@ -1257,6 +1272,23 @@ export class ExamsService {
           .catch((err) => {
             console.error("[ExamsService] Auto-bookmark failed:", err);
           });
+      }
+
+      if (exam.collaborationSessionId && result.collaborationRealtime && this.app?.collaborationService) {
+        try {
+          await this.app.collaborationService.publishParticipantFinishedRealtime({
+            sessionId: exam.collaborationSessionId,
+            userId,
+            examId: exam.id,
+            finishedAt: now.toISOString(),
+            result: result.collaborationRealtime
+          });
+        } catch (error) {
+          this.app.log.warn(
+            { error, sessionId: exam.collaborationSessionId, userId, examId: exam.id },
+            'Failed to publish collaboration submit realtime events after exam submission'
+          );
+        }
       }
 
       return {
