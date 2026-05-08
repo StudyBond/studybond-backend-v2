@@ -236,6 +236,9 @@ export class CollaborationWebSocketHandlers {
     const redisClient = this.app.cache?.available ? this.app.cache.client : null;
     if (!redisClient) return;
 
+    let consecutiveFailures = 0;
+    const MAX_TOLERATED_FAILURES = 3;
+
     const refreshTimer = setInterval(async () => {
       try {
         const refreshed = await redisClient.eval(
@@ -246,7 +249,19 @@ export class CollaborationWebSocketHandlers {
           CollaborationWebSocketHandlers.WS_OWNER_TTL_SECONDS
         );
 
-        if (Number(refreshed) === 0) {
+        if (Number(refreshed) === 1) {
+          // Lease refreshed successfully — reset failure counter.
+          consecutiveFailures = 0;
+          return;
+        }
+
+        // refreshed === 0: The key either expired (transient Redis failure
+        // caused missed refreshes) or was genuinely stolen by another connection.
+        // Check if the key exists with a DIFFERENT owner before killing.
+        const currentOwner = await redisClient.get(lease.key);
+
+        if (currentOwner && currentOwner !== lease.owner) {
+          // Another connection genuinely claimed ownership — evict this socket.
           this.safeSend(socket, {
             type: COLLAB_WEBSOCKET_EVENTS.CONNECTION_REPLACED,
             payload: {
@@ -255,9 +270,38 @@ export class CollaborationWebSocketHandlers {
             }
           });
           socket.close(4409, 'Connection ownership replaced');
+          return;
         }
+
+        // Key is gone (expired) but no other owner claimed it. This is a
+        // transient failure — re-acquire the lease instead of killing the socket.
+        await redisClient.set(
+          lease.key,
+          lease.owner,
+          'EX',
+          CollaborationWebSocketHandlers.WS_OWNER_TTL_SECONDS
+        );
+        consecutiveFailures = 0;
+        this.app.log.info({ key: lease.key }, 'Re-acquired expired websocket lease after transient failure');
+
       } catch (error) {
-        this.app.log.warn({ error, key: lease.key }, 'Failed to refresh websocket ownership lease');
+        consecutiveFailures += 1;
+        this.app.log.warn(
+          { error, key: lease.key, consecutiveFailures },
+          'Failed to refresh websocket ownership lease'
+        );
+
+        // Only kill the socket after sustained Redis unavailability.
+        // Transient blips (1-2 failures) are tolerated.
+        if (consecutiveFailures >= MAX_TOLERATED_FAILURES) {
+          this.app.log.error(
+            { key: lease.key, consecutiveFailures },
+            'Redis lease refresh failed repeatedly, but keeping socket alive (local-only mode)'
+          );
+          // Do NOT close the socket — events still flow via local dispatch.
+          // Reset counter to avoid flooding logs.
+          consecutiveFailures = 0;
+        }
       }
     }, CollaborationWebSocketHandlers.WS_OWNER_REFRESH_SECONDS * 1000);
 

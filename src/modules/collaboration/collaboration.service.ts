@@ -297,16 +297,23 @@ export class CollaborationService {
     if (eventType === COLLAB_WEBSOCKET_EVENTS.TIME_ALERT) max = COLLAB_LIMITS.TIME_ALERT_RATE_LIMIT_MAX;
 
     const key = `collab:ws:rate:${sessionId}:${userId}:${eventType}`;
-    const count = await cache.incr(key);
-    if (count === 1) {
-      await cache.expire(key, COLLAB_LIMITS.EVENT_RATE_LIMIT_WINDOW_SECONDS);
-    }
-    if (count > max) {
-      throw new AppError(
-        'You are sending updates too fast. Slow down a little so everyone gets smooth real-time updates.',
-        429,
-        'COLLAB_EVENT_RATE_LIMIT'
-      );
+    try {
+      const count = await cache.incr(key);
+      if (count === 1) {
+        await cache.expire(key, COLLAB_LIMITS.EVENT_RATE_LIMIT_WINDOW_SECONDS);
+      }
+      if (count > max) {
+        throw new AppError(
+          'You are sending updates too fast. Slow down a little so everyone gets smooth real-time updates.',
+          429,
+          'COLLAB_EVENT_RATE_LIMIT'
+        );
+      }
+    } catch (error) {
+      // Re-throw rate limit errors (intentional rejection).
+      if (error instanceof AppError) throw error;
+      // Redis is unavailable — degrade gracefully by allowing the event.
+      this.app.log.warn({ error, key }, 'Rate limit check failed (Redis), allowing event');
     }
   }
 
@@ -321,13 +328,20 @@ export class CollaborationService {
     const cache = getCacheAdapter();
 
     if (cache.available) {
-      const owner = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
-      const acquired = await cache.acquireLock(
-        key,
-        owner,
-        CollaborationService.EVENT_DEDUPE_TTL_SECONDS
-      );
-      return !acquired;
+      try {
+        const owner = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+        const acquired = await cache.acquireLock(
+          key,
+          owner,
+          CollaborationService.EVENT_DEDUPE_TTL_SECONDS
+        );
+        return !acquired;
+      } catch (error) {
+        // Redis is unavailable — degrade gracefully by allowing the event
+        // (risk of duplicate delivery is better than dropping the event).
+        this.app.log.warn({ error, key }, 'Dedup check failed (Redis), allowing event');
+        return false;
+      }
     }
 
     this.compactFallbackCache();
