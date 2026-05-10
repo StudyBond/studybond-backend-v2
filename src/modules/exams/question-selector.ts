@@ -7,8 +7,7 @@ import { getSubjectSearchVariants, normalizeSubjectLabel } from '../../shared/ut
 
 const PRACTICE_QUESTION_TYPE_FILTER = { in: [QUESTION_TYPES.PRACTICE, QUESTION_TYPES.AI_GENERATED] } as const;
 
-/** Sentinel key for questions whose topic is null, empty, or not in a blueprint */
-const OTHER_BUCKET = '__other__';
+
 
 interface QuestionSelectionOptions {
     deterministic?: boolean;
@@ -126,307 +125,49 @@ export function deduplicateByQuestionText<T extends { questionText: string }>(ca
 }
 
 // ============================================================
-// STRATIFIED TOPIC-BALANCED SELECTION ENGINE
+// PURE RANDOM SELECTION ENGINE
 // ============================================================
 
 /**
- * Stratified topic-balanced question selection.
+ * Pure random question selection.
  *
- * This is the core algorithm that prevents topic clustering in exams.
- * It works in three modes depending on available configuration:
+ * Fisher-Yates shuffles the entire deduplicated candidate pool and slices
+ * the desired count. Every question in the pool has an equal probability
+ * of being selected on every exam attempt.
  *
- * 1. **Blueprint mode** — When a TopicBlueprint is provided for the subject,
- *    questions are distributed according to explicit per-topic quotas.
- *    Unrecognised topics fall into the `__other__` bucket.
+ * This replaces the previous stratified topic-balanced selection which
+ * grouped questions by topic/difficulty buckets. While well-intentioned,
+ * that approach caused the same subset of questions to appear repeatedly
+ * because the bucketing narrowed the effective selection window.
+ * JAMB/UTME itself does not use stratified selection — questions are
+ * drawn uniformly at random from the full bank.
  *
- * 2. **Uniform mode** — When no blueprint exists, discovered topics are
- *    distributed as evenly as possible using round-robin allocation.
- *
- * 3. **Passthrough mode** — When all candidates share one topic (or null),
- *    gracefully degrades to a simple shuffle-and-slice (current behavior).
- *
- * Within each topic bucket, questions are sub-stratified by difficulty level
- * (easy/medium/hard) to ensure balanced difficulty across the exam.
- *
- * Passage groups (questions linked by parentQuestionId) can be selected as
- * atomic units when the blueprint entry specifies `requirePassageGroup: true`.
+ * The `blueprint` parameter is accepted for backward compatibility but
+ * is intentionally ignored — all selection is purely random.
  *
  * @param candidates   - Pre-fetched pool of candidate questions for one subject
  * @param desiredCount - Number of questions to select
- * @param blueprint    - Optional per-topic quota map for this subject
- * @returns            - Topic-balanced selection of questions
+ * @param _blueprint   - IGNORED. Kept for API compatibility.
+ * @returns            - Randomly selected questions
  */
-export function stratifiedTopicSelect<T extends { topic: string | null; difficultyLevel?: string | null; parentQuestionId?: number | null; id?: number }>(
+export function randomSelect<T extends { topic: string | null; difficultyLevel?: string | null; parentQuestionId?: number | null; id?: number }>(
     candidates: T[],
     desiredCount: number,
-    blueprint?: Record<string, TopicBlueprintEntry> | null
+    _blueprint?: Record<string, TopicBlueprintEntry> | null
 ): T[] {
     if (candidates.length === 0 || desiredCount <= 0) return [];
     if (candidates.length <= desiredCount) return shuffleArray(candidates);
 
-    // ---- Step 1: Group candidates into topic buckets ----
-    const buckets = new Map<string, T[]>();
-    const blueprintKeys = blueprint ? new Set(Object.keys(blueprint)) : null;
-
-    for (const q of candidates) {
-        let bucketKey: string;
-
-        if (blueprintKeys) {
-            // Blueprint mode: named topics go to their slot, everything else to __other__
-            const topicName = q.topic?.trim() || '';
-            bucketKey = (topicName && blueprintKeys.has(topicName)) ? topicName : OTHER_BUCKET;
-        } else {
-            // Uniform mode: group by actual topic; null/empty → __other__
-            bucketKey = q.topic?.trim() || OTHER_BUCKET;
-        }
-
-        let bucket = buckets.get(bucketKey);
-        if (!bucket) {
-            bucket = [];
-            buckets.set(bucketKey, bucket);
-        }
-        bucket.push(q);
-    }
-
-    // ---- Step 2: Handle passage groups for topics that require them ----
-    if (blueprint) {
-        for (const [topicName, entry] of Object.entries(blueprint)) {
-            if (!entry.requirePassageGroup) continue;
-            const bucket = buckets.get(topicName);
-            if (!bucket) continue;
-
-            // Group by parentQuestionId — each non-null parentQuestionId forms a passage group
-            const passageGroups = new Map<number, T[]>();
-            const standaloneQuestions: T[] = [];
-
-            for (const q of bucket) {
-                const parentId = (q as any).parentQuestionId;
-                if (parentId != null) {
-                    let group = passageGroups.get(parentId);
-                    if (!group) {
-                        group = [];
-                        passageGroups.set(parentId, group);
-                    }
-                    group.push(q);
-                } else {
-                    standaloneQuestions.push(q);
-                }
-            }
-
-            // If passage groups exist, select complete groups to fill the quota
-            if (passageGroups.size > 0) {
-                const groupEntries = shuffleArray([...passageGroups.entries()]);
-                const selectedFromPassages = selectPassageGroupsToQuota(groupEntries, entry.quota);
-                const remaining = entry.quota - selectedFromPassages.length;
-
-                // Fill remainder from standalone questions if needed
-                if (remaining > 0 && standaloneQuestions.length > 0) {
-                    selectedFromPassages.push(
-                        ...shuffleArray(standaloneQuestions).slice(0, remaining)
-                    );
-                }
-
-                // Replace the bucket with just the selected passage questions
-                // so the main quota logic below respects passage group atomicity
-                buckets.set(topicName, selectedFromPassages);
-            }
-        }
-    }
-
-    // ---- Step 3: Shuffle each bucket internally with difficulty sub-stratification ----
-    for (const [key, bucket] of buckets) {
-        buckets.set(key, difficultyStratifiedShuffle(bucket));
-    }
-
-    // ---- Step 4: Allocate quotas ----
-    const selected: T[] = [];
-
-    if (blueprint) {
-        // Blueprint mode: use explicit quotas
-        const allocations = new Map<string, number>();
-        let quotaTotal = 0;
-
-        for (const [topicName, entry] of Object.entries(blueprint)) {
-            const bucket = buckets.get(topicName);
-            const available = bucket ? bucket.length : 0;
-            const quota = Math.min(entry.quota, available);
-            allocations.set(topicName, quota);
-            quotaTotal += quota;
-        }
-
-        // If blueprint quotas don't fill desiredCount, allocate remainder to __other__
-        if (quotaTotal < desiredCount) {
-            const otherBucket = buckets.get(OTHER_BUCKET);
-            const currentOtherAlloc = allocations.get(OTHER_BUCKET) ?? 0;
-            const extraNeeded = desiredCount - quotaTotal;
-            const otherAvailable = otherBucket ? otherBucket.length - currentOtherAlloc : 0;
-            if (otherAvailable > 0) {
-                allocations.set(OTHER_BUCKET, currentOtherAlloc + Math.min(extraNeeded, otherAvailable));
-            }
-        }
-
-        // Pick from each bucket according to allocation
-        for (const [topicName, quota] of allocations) {
-            const bucket = buckets.get(topicName);
-            if (!bucket || quota <= 0) continue;
-            selected.push(...bucket.slice(0, quota));
-        }
-
-        // If still short (not enough questions across all buckets), fill from remaining
-        if (selected.length < desiredCount) {
-            const selectedIds = new Set(selected.map(q => (q as any).id));
-            const remainder: T[] = [];
-            for (const bucket of buckets.values()) {
-                for (const q of bucket) {
-                    if (!selectedIds.has((q as any).id)) {
-                        remainder.push(q);
-                    }
-                }
-            }
-            const needed = desiredCount - selected.length;
-            selected.push(...shuffleArray(remainder).slice(0, needed));
-        }
-    } else {
-        // Uniform mode: distribute evenly across discovered topics
-        const topicKeys = [...buckets.keys()];
-
-        if (topicKeys.length <= 1) {
-            // Single topic or all null — difficulty interleave was already applied in
-            // Step 3, so we take from the front to preserve balanced difficulty spread.
-            const singleBucket = buckets.get(topicKeys[0]) ?? [];
-            return singleBucket.slice(0, desiredCount);
-        }
-
-        const baseQuota = Math.floor(desiredCount / topicKeys.length);
-        let remainder = desiredCount - (baseQuota * topicKeys.length);
-
-        // First pass: give each topic its base quota
-        const overflow: T[] = [];
-        for (const key of shuffleArray(topicKeys)) {
-            const bucket = buckets.get(key)!;
-
-            // Topics with extra remainder slots get +1
-            let quota = baseQuota;
-            if (remainder > 0 && bucket.length > baseQuota) {
-                quota += 1;
-                remainder -= 1;
-            }
-
-            const take = Math.min(quota, bucket.length);
-            selected.push(...bucket.slice(0, take));
-
-            // Leftovers from this bucket go to overflow pool
-            if (bucket.length > take) {
-                overflow.push(...bucket.slice(take));
-            }
-        }
-
-        // Second pass: fill remaining slots from overflow (handles topics with fewer than quota)
-        if (selected.length < desiredCount && overflow.length > 0) {
-            const needed = desiredCount - selected.length;
-            selected.push(...shuffleArray(overflow).slice(0, needed));
-        }
-    }
-
-    // ---- Step 5: Final shuffle to interleave topics ----
-    return shuffleArray(selected).slice(0, desiredCount);
+    // Pure random: shuffle the entire pool and take from the top
+    return shuffleArray(candidates).slice(0, desiredCount);
 }
 
+/** @deprecated Use randomSelect instead. Alias kept for backward compatibility. */
+export const stratifiedTopicSelect = randomSelect;
 
-/**
- * Sub-stratify a bucket of questions by difficulty level.
- *
- * Groups questions by difficulty (easy/medium/hard/null), shuffles each group,
- * then interleaves them so the bucket has a balanced difficulty spread.
- *
- * This ensures that when the main algorithm picks from the start of a bucket,
- * it naturally gets a mix of difficulties rather than clustering.
- */
-function difficultyStratifiedShuffle<T extends { difficultyLevel?: string | null }>(questions: T[]): T[] {
-    if (questions.length <= 1) return questions;
 
-    const byDifficulty = new Map<string, T[]>();
-    for (const q of questions) {
-        const key = q.difficultyLevel?.trim().toLowerCase() || '__unset__';
-        let group = byDifficulty.get(key);
-        if (!group) {
-            group = [];
-            byDifficulty.set(key, group);
-        }
-        group.push(q);
-    }
 
-    // If all same difficulty, just shuffle
-    if (byDifficulty.size <= 1) {
-        return shuffleArray(questions);
-    }
 
-    // Shuffle each difficulty group
-    const groups = [...byDifficulty.values()].map(g => shuffleArray(g));
-
-    // Round-robin interleave across difficulty groups
-    const result: T[] = [];
-    let maxLen = 0;
-    for (const g of groups) {
-        if (g.length > maxLen) maxLen = g.length;
-    }
-
-    for (let i = 0; i < maxLen; i++) {
-        for (const g of groups) {
-            if (i < g.length) {
-                result.push(g[i]);
-            }
-        }
-    }
-
-    return result;
-}
-
-function selectPassageGroupsToQuota<T>(
-    groupEntries: Array<[number, T[]]>,
-    quota: number
-): T[] {
-    if (quota <= 0 || groupEntries.length === 0) {
-        return [];
-    }
-
-    const bestSelections = new Map<number, number[]>();
-    bestSelections.set(0, []);
-
-    for (let index = 0; index < groupEntries.length; index++) {
-        const groupSize = groupEntries[index][1].length;
-        if (groupSize > quota) {
-            continue;
-        }
-
-        const totals = [...bestSelections.keys()].sort((left, right) => right - left);
-        for (const total of totals) {
-            const nextTotal = total + groupSize;
-            if (nextTotal > quota || bestSelections.has(nextTotal)) {
-                continue;
-            }
-
-            const previousSelection = bestSelections.get(total) ?? [];
-            bestSelections.set(nextTotal, [...previousSelection, index]);
-        }
-    }
-
-    let bestTotal = 0;
-    for (const total of bestSelections.keys()) {
-        if (total > bestTotal) {
-            bestTotal = total;
-        }
-    }
-
-    const selectedIndices = bestSelections.get(bestTotal) ?? [];
-    const selectedQuestions: T[] = [];
-
-    for (const index of selectedIndices) {
-        selectedQuestions.push(...shuffleArray(groupEntries[index][1]));
-    }
-
-    return selectedQuestions;
-}
 
 
 // ============================================================
@@ -546,7 +287,6 @@ export async function selectQuestionsForExam(
     const deterministic = options.deterministic ?? false;
     const realQuestionPool = options.realQuestionPool ?? QUESTION_POOLS.REAL_BANK;
     const institutionId = options.institutionId;
-    const topicBlueprints = options.topicBlueprints ?? null;
     const realQuestionPoolFilter = buildRealQuestionPoolFilter({
         realQuestionPool,
         isFeaturedFree: options.isFeaturedFree
@@ -599,16 +339,13 @@ export async function selectQuestionsForExam(
         //
         // Phase 1: Fetch lightweight metadata for the ENTIRE candidate pool
         //          (no `take` limit — scan the full database for this subject).
-        // Phase 2: Deduplicate + stratify in-memory over the complete pool.
-        // Phase 3: Hydrate only the selected IDs with full payloads.
+        // Phase 2: Deduplicate + randomly select from the complete pool.
         //
-        // This eliminates the "paginated stratification" bug where the same
+        // This eliminates the "paginated selection" bug where the same
         // subset of questions (ordered by PK) was always returned, making
         // 80%+ of the question bank invisible to the shuffler.
         // ================================================================
 
-        // Resolve the topic blueprint for this subject (if configured)
-        const subjectBlueprint = topicBlueprints?.[normalizedSubject] ?? topicBlueprints?.[subject] ?? null;
 
         let selectedIds: number[];
 
@@ -640,7 +377,7 @@ export async function selectQuestionsForExam(
                 })
             ]) as [CandidateMeta[], CandidateMeta[]];
 
-            // Phase 2: Deduplicate + stratify over the FULL global pool
+            // Phase 2: Deduplicate + randomly select from the FULL global pool
             realCandidates = deduplicateByQuestionText(realCandidates);
             practiceCandidates = deduplicateByQuestionText(practiceCandidates);
 
@@ -658,8 +395,8 @@ export async function selectQuestionsForExam(
                 );
             }
 
-            const selectedReal = stratifiedTopicSelect(realCandidates, realQuestionCount, subjectBlueprint);
-            const selectedPractice = stratifiedTopicSelect(practiceCandidates, practiceQuestionCount, subjectBlueprint);
+            const selectedReal = randomSelect(realCandidates, realQuestionCount);
+            const selectedPractice = randomSelect(practiceCandidates, practiceQuestionCount);
             selectedIds = [...selectedReal, ...selectedPractice].map(q => q.id);
         } else {
             const questionTypeFilter = examType === EXAM_TYPES.REAL_PAST_QUESTION
@@ -680,7 +417,7 @@ export async function selectQuestionsForExam(
                 select: buildCandidateSelect(),
             }) as CandidateMeta[];
 
-            // Phase 2: Deduplicate + stratify over the FULL global pool
+            // Phase 2: Deduplicate + randomly select from the FULL global pool
             candidates = deduplicateByQuestionText(candidates);
 
             if (candidates.length < questionsPerSubject) {
@@ -690,16 +427,16 @@ export async function selectQuestionsForExam(
                 );
             }
 
-            selectedIds = stratifiedTopicSelect(candidates, questionsPerSubject, subjectBlueprint).map(q => q.id);
+            selectedIds = randomSelect(candidates, questionsPerSubject).map(q => q.id);
         }
 
         // Phase 3: Surgical hydration — fetch full payloads for ONLY the selected IDs
-        // and restitch in the exact stratified shuffle order
+        // and restitch in the randomly shuffled order
         const hydrated = await hydrateQuestionsByIds(selectedIds);
         selectedQuestions.push(...hydrated);
     }
 
-    // Questions are already shuffled within each subject by stratifiedTopicSelect.
+    // Questions are already shuffled within each subject by randomSelect.
     // Maintain subject-block ordering (JAMB-standard): subjects appear in the
     // order the user selected them, never mixed across subjects.
     return selectedQuestions;
