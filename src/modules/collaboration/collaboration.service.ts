@@ -836,7 +836,33 @@ export class CollaborationService {
         }
 
         try {
+          const fallbackInstitution = sessionForEligibility.institutionId
+            ? null
+            : await institutionContextService.resolveByCode();
+          const config = await institutionExamConfigService.getActiveConfigForInstitutionId(
+            sessionForEligibility.institutionId ?? fallbackInstitution!.id
+          );
+          // Keep the interactive transaction focused on writes/locking so
+          // large four-subject pools do not burn the transaction timeout.
+          const questions = await selectQuestionsForExam(
+            sessionForEligibility.subjectsIncluded,
+            sessionForEligibility.questionSource,
+            config.questionsPerSubject,
+            [],
+            {
+              deterministic: false,
+              institutionId: sessionForEligibility.institutionId ?? undefined,
+              realQuestionPool: QUESTION_POOLS.REAL_BANK
+            }
+          );
+          const durationSeconds = config.collaborationDurationSeconds;
           const startedAt = new Date();
+          const expiresAt = new Date(
+            startedAt.getTime() +
+            (durationSeconds * 1000) +
+            (EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS * 1000)
+          );
+
           const started = await this.withTransaction(async (tx: TxClient) => {
             const initial = await this.findSessionById(sessionId, tx);
             if (!initial) {
@@ -867,30 +893,6 @@ export class CollaborationService {
             if (activeParticipants.length !== COLLAB_LIMITS.MAX_PARTICIPANTS_V1) {
               throw new ValidationError('A 1v1 duel requires exactly 2 participants before starting.');
             }
-
-            const fallbackInstitution = await institutionContextService.resolveByCode();
-            const config = await institutionExamConfigService.getActiveConfigForInstitutionId(
-              session.institutionId ?? fallbackInstitution.id,
-              tx as any
-            );
-            const questions = await selectQuestionsForExam(
-              session.subjectsIncluded,
-              session.questionSource,
-              config.questionsPerSubject,
-              [],
-              {
-                deterministic: false,
-                institutionId: session.institutionId ?? undefined,
-                realQuestionPool: QUESTION_POOLS.REAL_BANK
-              }
-            );
-
-            const durationSeconds = config.collaborationDurationSeconds;
-            const expiresAt = new Date(
-              startedAt.getTime() +
-              (durationSeconds * 1000) +
-              (EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS * 1000)
-            );
 
             const participantsSorted = [...session.participants].sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
             const createdExams: Array<{ id: number; userId: number }> = [];

@@ -360,4 +360,92 @@ describeE2E('Collaboration start race (HTTP e2e)', () => {
       await app.close();
     }
   }, 120000);
+
+  it('starts a full four-subject duel with 100 shared questions', async () => {
+    const fixture: E2EFixture = {
+      userIds: [],
+      sessionIds: [],
+      questionIds: [],
+      collabSessionIds: []
+    };
+
+    const app = await buildApp();
+
+    try {
+      const host = await createUserFixture(fixture);
+      const joiner = await createUserFixture(fixture);
+      const hostAuth = await createAuthHeader(fixture, host);
+      const joinerAuth = await createAuthHeader(fixture, joiner);
+      const fullSubjects = ['English', 'Physics', 'Chemistry', 'Biology'] as const;
+
+      for (const subject of fullSubjects) {
+        await createQuestions(fixture, subject, 30);
+      }
+
+      const createResponse = await app.inject({
+        method: 'POST',
+        url: '/api/collaboration/create',
+        headers: {
+          authorization: hostAuth,
+          'idempotency-key': uniqueToken('e2e-create-full')
+        },
+        payload: {
+          sessionType: 'ONE_V_ONE_DUEL',
+          subjects: fullSubjects
+        }
+      });
+
+      expect(createResponse.statusCode).toBe(201);
+      const createdBody = createResponse.json() as any;
+      const sessionId = createdBody.data.session.id as number;
+      const code = createdBody.data.session.code as string;
+      fixture.collabSessionIds.push(sessionId);
+      expect(createdBody.data.session.totalQuestions).toBe(100);
+
+      const joinResponse = await app.inject({
+        method: 'POST',
+        url: `/api/collaboration/code/${code}/join`,
+        headers: {
+          authorization: joinerAuth,
+          'idempotency-key': uniqueToken('e2e-join-full')
+        }
+      });
+      expect(joinResponse.statusCode).toBe(200);
+
+      const startResponse = await app.inject({
+        method: 'POST',
+        url: `/api/collaboration/sessions/${sessionId}/start`,
+        headers: {
+          authorization: hostAuth,
+          'idempotency-key': uniqueToken('e2e-start-full')
+        }
+      });
+
+      expect(startResponse.statusCode).toBe(200);
+      const startBody = startResponse.json() as any;
+      expect(startBody.data.timeAllowedSeconds).toBe(90 * 60);
+      expect(startBody.data.session.totalQuestions).toBe(100);
+      expect(startBody.data.questions).toHaveLength(100);
+
+      const selectedQuestions = await prisma.question.findMany({
+        where: {
+          id: {
+            in: startBody.data.questions.map((question: { id: number }) => question.id)
+          }
+        },
+        select: {
+          subject: true
+        }
+      });
+
+      expect(selectedQuestions).toHaveLength(100);
+      expect(selectedQuestions.filter((question) => question.subject === 'English')).toHaveLength(25);
+      expect(selectedQuestions.filter((question) => question.subject === 'Physics')).toHaveLength(25);
+      expect(selectedQuestions.filter((question) => question.subject === 'Chemistry')).toHaveLength(25);
+      expect(selectedQuestions.filter((question) => question.subject === 'Biology')).toHaveLength(25);
+    } finally {
+      await cleanupFixture(fixture);
+      await app.close();
+    }
+  }, 120000);
 });
