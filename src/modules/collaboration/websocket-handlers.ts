@@ -32,6 +32,8 @@ export class CollaborationWebSocketHandlers {
   private readonly ownerLeases = new Map<any, ConnectionLease>();
   private readonly ownerRefreshTimers = new Map<any, NodeJS.Timeout>();
   private readonly localSocketByConnectionKey = new Map<string, any>();
+  private redisLeaseCircuitOpenUntil = 0;
+  private redisLeaseLastWarningAt = 0;
   private totalQueuedMessages = 0;
 
   private static readonly WS_OWNER_TTL_SECONDS = Number.parseInt(
@@ -41,6 +43,11 @@ export class CollaborationWebSocketHandlers {
 
   private static readonly WS_OWNER_REFRESH_SECONDS = Number.parseInt(
     process.env.WS_OWNER_REFRESH_SECONDS || '25',
+    10
+  );
+
+  private static readonly WS_OWNER_REDIS_BACKOFF_SECONDS = Number.parseInt(
+    process.env.WS_OWNER_REDIS_BACKOFF_SECONDS || '300',
     10
   );
 
@@ -160,6 +167,27 @@ export class CollaborationWebSocketHandlers {
     return `ws:conn:${sessionId}:${userId}`;
   }
 
+  private isRedisLeaseCircuitOpen(): boolean {
+    return Date.now() < this.redisLeaseCircuitOpenUntil;
+  }
+
+  private openRedisLeaseCircuit(reason: string, error?: unknown): void {
+    const now = Date.now();
+    this.redisLeaseCircuitOpenUntil =
+      now + (CollaborationWebSocketHandlers.WS_OWNER_REDIS_BACKOFF_SECONDS * 1000);
+
+    if (now - this.redisLeaseLastWarningAt < 60_000) return;
+    this.redisLeaseLastWarningAt = now;
+    this.app.log.warn(
+      {
+        error,
+        reason,
+        backoffSeconds: CollaborationWebSocketHandlers.WS_OWNER_REDIS_BACKOFF_SECONDS
+      },
+      'Redis websocket lease refresh disabled temporarily; using local-only socket ownership'
+    );
+  }
+
   private async authenticateSocket(req: FastifyRequest): Promise<WsAuthedContext> {
     const params = parseWithSchema(sessionIdParamSchema, req.params, 'Invalid collaboration session id');
     const token = this.extractToken(req);
@@ -203,30 +231,38 @@ export class CollaborationWebSocketHandlers {
       return { key, owner };
     }
 
-    const claimed = await redisClient.set(
-      key,
-      owner,
-      'EX',
-      CollaborationWebSocketHandlers.WS_OWNER_TTL_SECONDS,
-      'NX'
-    );
+    if (this.isRedisLeaseCircuitOpen()) {
+      return { key, owner };
+    }
 
-    if (claimed !== 'OK') {
-      const previousOwner = await redisClient.get(key);
-      await redisClient.set(
+    try {
+      const claimed = await redisClient.set(
         key,
         owner,
         'EX',
-        CollaborationWebSocketHandlers.WS_OWNER_TTL_SECONDS
+        CollaborationWebSocketHandlers.WS_OWNER_TTL_SECONDS,
+        'NX'
       );
 
-      this.app.metrics.incrementCounter('ws_connection_replaced_total', 1);
-      if (previousOwner) {
-        this.app.log.info(
-          { key, previousOwner, owner },
-          'WebSocket ownership replaced by newer connection'
+      if (claimed !== 'OK') {
+        const previousOwner = await redisClient.get(key);
+        await redisClient.set(
+          key,
+          owner,
+          'EX',
+          CollaborationWebSocketHandlers.WS_OWNER_TTL_SECONDS
         );
+
+        this.app.metrics.incrementCounter('ws_connection_replaced_total', 1);
+        if (previousOwner) {
+          this.app.log.info(
+            { key, previousOwner, owner },
+            'WebSocket ownership replaced by newer connection'
+          );
+        }
       }
+    } catch (error) {
+      this.openRedisLeaseCircuit('acquire_failed', error);
     }
 
     return { key, owner };
@@ -234,12 +270,18 @@ export class CollaborationWebSocketHandlers {
 
   private startLeaseRefresh(socket: any, lease: ConnectionLease): void {
     const redisClient = this.app.cache?.available ? this.app.cache.client : null;
-    if (!redisClient) return;
+    if (!redisClient || this.isRedisLeaseCircuitOpen()) return;
 
     let consecutiveFailures = 0;
     const MAX_TOLERATED_FAILURES = 3;
 
     const refreshTimer = setInterval(async () => {
+      if (this.isRedisLeaseCircuitOpen()) {
+        clearInterval(refreshTimer);
+        this.ownerRefreshTimers.delete(socket);
+        return;
+      }
+
       try {
         const refreshed = await redisClient.eval(
           `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("expire", KEYS[1], ARGV[2]) else return 0 end`,
@@ -282,25 +324,23 @@ export class CollaborationWebSocketHandlers {
           CollaborationWebSocketHandlers.WS_OWNER_TTL_SECONDS
         );
         consecutiveFailures = 0;
-        this.app.log.info({ key: lease.key }, 'Re-acquired expired websocket lease after transient failure');
+        this.app.log.debug({ key: lease.key }, 'Re-acquired expired websocket lease after transient failure');
 
       } catch (error) {
         consecutiveFailures += 1;
-        this.app.log.warn(
+        this.app.log.debug(
           { error, key: lease.key, consecutiveFailures },
           'Failed to refresh websocket ownership lease'
         );
 
-        // Only kill the socket after sustained Redis unavailability.
-        // Transient blips (1-2 failures) are tolerated.
+        // After sustained Redis unavailability, stop refreshing this process-wide
+        // lease for a short backoff window and keep serving the local socket.
         if (consecutiveFailures >= MAX_TOLERATED_FAILURES) {
-          this.app.log.error(
-            { key: lease.key, consecutiveFailures },
-            'Redis lease refresh failed repeatedly, but keeping socket alive (local-only mode)'
-          );
+          // Do NOT close the socket; events still flow via local dispatch.
+          this.openRedisLeaseCircuit('refresh_failed', error);
+          clearInterval(refreshTimer);
+          this.ownerRefreshTimers.delete(socket);
           // Do NOT close the socket — events still flow via local dispatch.
-          // Reset counter to avoid flooding logs.
-          consecutiveFailures = 0;
         }
       }
     }, CollaborationWebSocketHandlers.WS_OWNER_REFRESH_SECONDS * 1000);
