@@ -20,7 +20,8 @@ export const EXAM_TYPES = {
     MIXED: 'MIXED',
     ONE_V_ONE_DUEL: 'ONE_V_ONE_DUEL',
     GROUP_COLLAB: 'GROUP_COLLAB',
-    DAILY_CHALLENGE: 'DAILY_CHALLENGE'
+    DAILY_CHALLENGE: 'DAILY_CHALLENGE',
+    BOOKMARK_EXAM: 'BOOKMARK_EXAM'
 } as const;
 
 export type ExamType = keyof typeof EXAM_TYPES;
@@ -54,7 +55,8 @@ export const SP_MULTIPLIERS = {
     PRACTICE: 0.5,
     RETAKE: 0.5,
     COLLABORATION: 1.5,
-    DAILY_CHALLENGE_FIXED_SP: 40
+    DAILY_CHALLENGE_FIXED_SP: 40,
+    BOOKMARK_EXAM: 0.5
 } as const;
 
 

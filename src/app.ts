@@ -9,6 +9,7 @@ import leaderboardPlugin from './modules/leaderboard/leaderboard.plugin';
 import subscriptionsPlugin from './modules/subscriptions/subscriptions.plugin';
 import usersPlugin from './modules/users/users.plugin';
 import bookmarksPlugin from './modules/bookmarks/bookmarks.plugin';
+import bookmarkExamPlugin from './modules/bookmark-exam/bookmark-exam.plugin';
 import streaksPlugin from './modules/streaks/streaks.plugin';
 import reportsPlugin from './modules/reports/reports.plugin';
 import devToolsPlugin from './modules/devtools/devtools.plugin';
@@ -95,6 +96,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await app.register(adminPlugin, { prefix: '/api' });
     await app.register(usersPlugin, { prefix: '/api' });
     await app.register(bookmarksPlugin, { prefix: '/api' });
+    await app.register(bookmarkExamPlugin, { prefix: '/api' });
     await app.register(reportsPlugin, { prefix: '/api' });
     await app.register(streaksPlugin, { prefix: '/api' });
     await app.register(collaborationPlugin, { prefix: '/api' });

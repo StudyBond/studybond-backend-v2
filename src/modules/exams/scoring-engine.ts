@@ -7,6 +7,7 @@ import { upsertUserInstitutionStatsTx } from '../../shared/institutions/user-sta
 import { queueLeaderboardProjectionEventTx } from '../../shared/leaderboard/projection';
 import { calculateNextStreakValues, getLagosDateValue } from '../../shared/streaks/domain';
 
+
 // Figure out the SP multiplier based on exam type and if they're retaking
 export function getSPMultiplier(
     examType: string,
@@ -23,8 +24,8 @@ export function getSPMultiplier(
         return SP_MULTIPLIERS.COLLABORATION;
     }
 
-    // Practice questions get 0.5x
-    if (examType === EXAM_TYPES.PRACTICE) {
+    // Practice and bookmark exam questions get 0.5x
+    if (examType === EXAM_TYPES.PRACTICE || examType === EXAM_TYPES.BOOKMARK_EXAM) {
         return SP_MULTIPLIERS.PRACTICE;
     }
 
