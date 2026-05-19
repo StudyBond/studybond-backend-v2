@@ -128,6 +128,19 @@ export const STREAK_CONFIG = {
     FREE_PROMPT_COOLDOWN_DAYS: parsePositiveInt(process.env.STREAK_FREE_PROMPT_COOLDOWN_DAYS, 7)
 };
 
+export const MARKETING_CONFIG = {
+    CAMPAIGN_CRON: (process.env.MARKETING_CAMPAIGN_CRON || '0 10 * * *').trim(),
+    BATCH_SIZE: parsePositiveInt(process.env.MARKETING_BATCH_SIZE, 200),
+    INACTIVITY_NUDGE_COOLDOWN_DAYS: parsePositiveInt(process.env.MARKETING_INACTIVITY_COOLDOWN_DAYS, 7),
+    INACTIVITY_NUDGE_MAX_TOTAL: parsePositiveInt(process.env.MARKETING_INACTIVITY_MAX_TOTAL, 2),
+    INACTIVITY_NUDGE_MIN_DAYS_SINCE_SIGNUP: parsePositiveInt(process.env.MARKETING_INACTIVITY_MIN_DAYS, 3),
+    MILESTONE_THRESHOLDS: [5, 10] as const,
+    DAILY_MARKETING_EMAIL_CAP: parsePositiveInt(process.env.MARKETING_DAILY_CAP, 1),
+    ELIGIBLE_AFTER: process.env.MARKETING_ELIGIBLE_AFTER?.trim() || null,
+    APP_BASE_URL: (process.env.MARKETING_APP_BASE_URL || 'https://studybond.app').trim(),
+    WELCOME_DELAY_MINUTES: parsePositiveInt(process.env.MARKETING_WELCOME_DELAY_MINUTES, 15),
+};
+
 export function getDevToolsConfig() {
     return {
         OTP_PREVIEW_ENABLED: parseBoolean(process.env.DEV_OTP_PREVIEW_ENABLED, false),

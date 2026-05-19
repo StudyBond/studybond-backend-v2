@@ -53,6 +53,7 @@ enum ExamType {
   ONE_V_ONE_DUEL
   GROUP_COLLAB
   DAILY_CHALLENGE
+  BOOKMARK_EXAM
 }
 
 enum ExamStatus {
@@ -164,6 +165,8 @@ enum EmailType {
   ADMIN_STEP_UP_OTP
   PASSWORD_RESET_OTP
   PASSWORD_CHANGED_ALERT
+  INACTIVITY_NUDGE
+  MILESTONE_CELEBRATION
 }
 
 enum EmailProvider {
@@ -284,6 +287,7 @@ model User {
   // === EMAIL CONTROL ===
   lastStreakReminder    DateTime? @db.Date
   emailUnsubscribed     Boolean   @default(false)
+  emailPreferences     Json?
 
   // === BAN STATUS ===
   isBanned              Boolean   @default(false)
@@ -1080,6 +1084,7 @@ model EmailLog {
   @@index([userId])
   @@index([sentAt])
   @@index([status, sentAt])
+  @@index([userId, emailType, status, sentAt])
 }
 
 model AdminAnalyticsDailyRollup {

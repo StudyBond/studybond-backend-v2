@@ -182,3 +182,154 @@ export function buildSubscriptionPromptTemplate(
     `
   };
 }
+
+// ============================================
+// MARKETING CAMPAIGN TEMPLATES
+// ============================================
+
+function buildUnsubscribeFooter(appBaseUrl: string): { text: string; html: string } {
+  const unsubUrl = `${appBaseUrl}/settings/notifications?unsubscribe=marketing`;
+  return {
+    text: `\n\n---\nYou are receiving this because you signed up for StudyBond.\nUnsubscribe from marketing emails: ${unsubUrl}`,
+    html: `
+      <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af;">
+        You are receiving this because you signed up for StudyBond.<br/>
+        <a href="${escapeHtml(unsubUrl)}" style="color: #6b7280; text-decoration: underline;">Unsubscribe from marketing emails</a>
+      </div>
+    `
+  };
+}
+
+function buildCtaButton(label: string, href: string): string {
+  return `
+    <div style="margin: 24px 0; text-align: center;">
+      <a href="${escapeHtml(href)}" style="display: inline-block; padding: 12px 28px; background: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">${escapeHtml(label)}</a>
+    </div>
+  `;
+}
+
+export function buildWelcomeEmailTemplate(
+  fullName: string,
+  aspiringCourse?: string | null,
+  appBaseUrl = 'https://studybond.app'
+): EmailTemplate {
+  const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+  const courseMention = aspiringCourse
+    ? ` You told us you are preparing for ${aspiringCourse} — we have got you covered.`
+    : '';
+  const dashboardUrl = `${appBaseUrl}/dashboard?utm_source=email&utm_campaign=welcome`;
+  const footer = buildUnsubscribeFooter(appBaseUrl);
+
+  return {
+    subject: `Welcome to StudyBond, ${firstName}!`,
+    text: [
+      `Hi ${firstName},`,
+      '',
+      `Welcome to StudyBond!${aspiringCourse ? ` You told us you are preparing for ${aspiringCourse} — we have got you covered.` : ''}`,
+      '',
+      'Here is what you can do right now:',
+      '• Take practice and real past-question exams',
+      '• Build a study streak and climb the leaderboard',
+      '• Challenge friends in 1v1 duels',
+      '',
+      `Start your first exam: ${dashboardUrl}`,
+      footer.text
+    ].join('\n'),
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h2 style="margin-bottom: 16px;">Welcome to StudyBond!</h2>
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p>We are glad to have you.${escapeHtml(courseMention)}</p>
+        <p>Here is what you can do right now:</p>
+        <ul style="padding-left: 20px; margin: 12px 0;">
+          <li>Take practice and real past-question exams</li>
+          <li>Build a study streak and climb the leaderboard</li>
+          <li>Challenge friends in 1v1 duels</li>
+        </ul>
+        ${buildCtaButton('Take your first exam', dashboardUrl)}
+        <p style="color: #6b7280; font-size: 14px;">Good luck with your preparation!</p>
+        ${footer.html}
+      </div>
+    `
+  };
+}
+
+export function buildInactivityNudgeTemplate(
+  fullName: string,
+  daysSinceSignup: number,
+  aspiringCourse?: string | null,
+  appBaseUrl = 'https://studybond.app'
+): EmailTemplate {
+  const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+  const daysLabel = daysSinceSignup === 1 ? '1 day' : `${daysSinceSignup} days`;
+  const courseLine = aspiringCourse
+    ? `You told us you are working toward ${aspiringCourse}. Every practice session counts.`
+    : 'Every practice session counts toward your exam goal.';
+  const dashboardUrl = `${appBaseUrl}/dashboard?utm_source=email&utm_campaign=inactivity_nudge`;
+  const footer = buildUnsubscribeFooter(appBaseUrl);
+
+  return {
+    subject: 'Your StudyBond account is waiting for you',
+    text: [
+      `Hi ${firstName},`,
+      '',
+      `You signed up for StudyBond ${daysLabel} ago, but you have not taken your first exam yet.`,
+      courseLine,
+      '',
+      'Thousands of students are already practicing. A quick exam takes just a few minutes.',
+      '',
+      `Start now: ${dashboardUrl}`,
+      footer.text
+    ].join('\n'),
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h2 style="margin-bottom: 16px;">Your account is waiting for you</h2>
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p>You signed up for StudyBond <strong>${escapeHtml(daysLabel)} ago</strong>, but you have not taken your first exam yet.</p>
+        <p>${escapeHtml(courseLine)}</p>
+        <p>Thousands of students are already practicing. A quick exam takes just a few minutes.</p>
+        ${buildCtaButton('Take your first exam', dashboardUrl)}
+        ${footer.html}
+      </div>
+    `
+  };
+}
+
+export function buildMilestoneCelebrationTemplate(
+  fullName: string,
+  milestoneLabel: string,
+  examCount: number,
+  appBaseUrl = 'https://studybond.app'
+): EmailTemplate {
+  const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+  const dashboardUrl = `${appBaseUrl}/dashboard?utm_source=email&utm_campaign=milestone`;
+  const footer = buildUnsubscribeFooter(appBaseUrl);
+
+  return {
+    subject: `You just hit ${examCount} exams on StudyBond!`,
+    text: [
+      `Hi ${firstName},`,
+      '',
+      `Congratulations! You have completed ${examCount} exams on StudyBond. That is a serious milestone.`,
+      '',
+      'Most students never make it this far. Your consistency is paying off.',
+      '',
+      'Want unlimited exams, streak freezes, and AI explanations? Premium unlocks everything.',
+      '',
+      `Keep going: ${dashboardUrl}`,
+      footer.text
+    ].join('\n'),
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h2 style="margin-bottom: 16px;">${escapeHtml(milestoneLabel)}</h2>
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p>Congratulations! You have completed <strong>${examCount} exams</strong> on StudyBond. That is a serious milestone.</p>
+        <p>Most students never make it this far. Your consistency is paying off.</p>
+        <p style="color: #4b5563;">Want unlimited exams, streak freezes, and AI explanations? <strong>Premium unlocks everything.</strong></p>
+        ${buildCtaButton('Keep practising', dashboardUrl)}
+        ${footer.html}
+      </div>
+    `
+  };
+}
+

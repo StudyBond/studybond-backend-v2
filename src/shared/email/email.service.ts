@@ -118,6 +118,10 @@ export class TransactionalEmailService {
         return EMAIL_CONFIG.WELCOME_FROM_ADDRESS;
       case EmailType.EVENING_REMINDER:
         return EMAIL_CONFIG.REMINDERS_FROM_ADDRESS;
+      case EmailType.INACTIVITY_NUDGE:
+      case EmailType.MILESTONE_CELEBRATION:
+      case EmailType.SUBSCRIPTION_PROMPT:
+        return EMAIL_CONFIG.REMINDERS_FROM_ADDRESS;
       default:
         return EMAIL_CONFIG.FROM_ADDRESS;
     }

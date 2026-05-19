@@ -1,9 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import cron from 'node-cron';
-import { ADMIN_ANALYTICS_CONFIG, AUTH_CONFIG, BOOKMARK_CONFIG, STREAK_CONFIG } from '../config/constants';
+import { ADMIN_ANALYTICS_CONFIG, AUTH_CONFIG, BOOKMARK_CONFIG, MARKETING_CONFIG, STREAK_CONFIG } from '../config/constants';
 import { refreshAdminAnalyticsRollups } from './admin-analytics-rollups';
 import { runExpiredBookmarkCleanup } from './bookmark-cleanup';
 import { runStreakReconciliation, runStreakReminderCheck } from './email-reminders';
+import { runMarketingCampaigns } from './marketing-campaigns';
 import { runPasswordChangeAlertCheck } from './password-change-alerts';
 import { runWeeklyLeaderboardReset } from './weekly-reset';
 import { runSubscriptionExpiryCheck } from './subscription-check';
@@ -72,6 +73,14 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     timezone: JOBS_TIMEZONE
   });
 
+  const marketingCampaignTask = cron.schedule(MARKETING_CONFIG.CAMPAIGN_CRON, async () => {
+    app.log.info('Running marketing campaign job.');
+    const result = await runMarketingCampaigns();
+    app.log.info(result, 'Marketing campaign job finished.');
+  }, {
+    timezone: JOBS_TIMEZONE
+  });
+
   app.addHook('onClose', async () => {
     weeklyResetTask.stop();
     subscriptionExpiryTask.stop();
@@ -80,6 +89,7 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     adminAnalyticsRollupTask.stop();
     streakReminderTask.stop();
     streakReconciliationTask.stop();
+    marketingCampaignTask.stop();
   });
 
   app.log.info({ timezone: JOBS_TIMEZONE }, 'Background jobs scheduled.');
