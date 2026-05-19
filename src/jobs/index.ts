@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import cron from 'node-cron';
-import { ADMIN_ANALYTICS_CONFIG, AUTH_CONFIG, BOOKMARK_CONFIG, MARKETING_CONFIG, STREAK_CONFIG } from '../config/constants';
+import { ADMIN_ANALYTICS_CONFIG, AUTH_CONFIG, BOOKMARK_CONFIG, MARKETING_CONFIG, STREAK_CONFIG, SUBSCRIPTION_ALERT_CONFIG } from '../config/constants';
 import { refreshAdminAnalyticsRollups } from './admin-analytics-rollups';
 import { runExpiredBookmarkCleanup } from './bookmark-cleanup';
 import { runStreakReconciliation, runStreakReminderCheck } from './email-reminders';
@@ -8,6 +8,7 @@ import { runMarketingCampaigns } from './marketing-campaigns';
 import { runPasswordChangeAlertCheck } from './password-change-alerts';
 import { runWeeklyLeaderboardReset } from './weekly-reset';
 import { runSubscriptionExpiryCheck } from './subscription-check';
+import { runSubscriptionAlerts } from './subscription-expiry-alerts';
 
 const JOBS_ENABLED = process.env.JOBS_ENABLED === 'true';
 const JOBS_TIMEZONE = process.env.JOBS_TIMEZONE || 'Africa/Lagos';
@@ -81,6 +82,14 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     timezone: JOBS_TIMEZONE
   });
 
+  const subscriptionAlertTask = cron.schedule(SUBSCRIPTION_ALERT_CONFIG.CRON, async () => {
+    app.log.info('Running subscription expiry alert job.');
+    const result = await runSubscriptionAlerts();
+    app.log.info(result, 'Subscription expiry alert job finished.');
+  }, {
+    timezone: JOBS_TIMEZONE
+  });
+
   app.addHook('onClose', async () => {
     weeklyResetTask.stop();
     subscriptionExpiryTask.stop();
@@ -90,6 +99,7 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     streakReminderTask.stop();
     streakReconciliationTask.stop();
     marketingCampaignTask.stop();
+    subscriptionAlertTask.stop();
   });
 
   app.log.info({ timezone: JOBS_TIMEZONE }, 'Background jobs scheduled.');

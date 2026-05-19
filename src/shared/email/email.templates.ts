@@ -333,3 +333,98 @@ export function buildMilestoneCelebrationTemplate(
   };
 }
 
+// ============================================
+// SUBSCRIPTION LIFECYCLE TEMPLATES
+// ============================================
+
+export function buildSubscriptionExpiryWarningTemplate(
+  fullName: string,
+  daysRemaining: number,
+  autoRenew: boolean,
+  appBaseUrl = 'https://studybond.app'
+): EmailTemplate {
+  const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+  const pricingUrl = `${appBaseUrl}/pricing?utm_source=email&utm_campaign=expiry_warning`;
+  const urgency = daysRemaining <= 1 ? 'tomorrow' : `in ${daysRemaining} days`;
+  const subjectUrgency = daysRemaining <= 1 ? 'tomorrow' : `in ${daysRemaining} days`;
+
+  const autoRenewNote = autoRenew
+    ? 'You have auto-renew enabled, so your subscription should renew automatically.'
+    : 'You do not have auto-renew enabled. To keep your premium access, please renew before it expires.';
+
+  return {
+    subject: `Your StudyBond Premium expires ${subjectUrgency}`,
+    text: [
+      `Hi ${firstName},`,
+      '',
+      `Your StudyBond Premium subscription expires ${urgency}.`,
+      '',
+      autoRenewNote,
+      '',
+      'With premium you get:',
+      '• Unlimited exams and retakes',
+      '• AI-powered explanations',
+      '• Streak freezes to protect your progress',
+      '• Priority access to new features',
+      '',
+      `Renew now: ${pricingUrl}`,
+    ].join('\n'),
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h2 style="margin-bottom: 16px; color: ${daysRemaining <= 1 ? '#dc2626' : '#d97706'};">Your Premium expires ${escapeHtml(urgency)}</h2>
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p>Your StudyBond Premium subscription expires <strong>${escapeHtml(urgency)}</strong>.</p>
+        <p style="color: #4b5563;">${escapeHtml(autoRenewNote)}</p>
+        <p>With premium you get:</p>
+        <ul style="padding-left: 20px; margin: 12px 0;">
+          <li>Unlimited exams and retakes</li>
+          <li>AI-powered explanations</li>
+          <li>Streak freezes to protect your progress</li>
+          <li>Priority access to new features</li>
+        </ul>
+        ${buildCtaButton('Renew Premium', pricingUrl)}
+      </div>
+    `
+  };
+}
+
+export function buildSubscriptionExpiredNoticeTemplate(
+  fullName: string,
+  appBaseUrl = 'https://studybond.app'
+): EmailTemplate {
+  const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+  const pricingUrl = `${appBaseUrl}/pricing?utm_source=email&utm_campaign=expired_notice`;
+
+  return {
+    subject: 'Your StudyBond Premium has expired',
+    text: [
+      `Hi ${firstName},`,
+      '',
+      'Your StudyBond Premium subscription has expired. Your account has been moved back to the free plan.',
+      '',
+      'Here is what you no longer have access to:',
+      '• Unlimited exams — you are now limited to free credits',
+      '• AI explanations — no longer available',
+      '• Streak freezes — your streak is now unprotected',
+      '',
+      'Your progress, scores, and bookmarks are all safe. You can resubscribe anytime to get everything back.',
+      '',
+      `Resubscribe: ${pricingUrl}`,
+    ].join('\n'),
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h2 style="margin-bottom: 16px; color: #dc2626;">Your Premium has expired</h2>
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p>Your StudyBond Premium subscription has expired. Your account has been moved back to the free plan.</p>
+        <p>Here is what you no longer have access to:</p>
+        <ul style="padding-left: 20px; margin: 12px 0; color: #dc2626;">
+          <li>Unlimited exams — you are now limited to free credits</li>
+          <li>AI explanations — no longer available</li>
+          <li>Streak freezes — your streak is now unprotected</li>
+        </ul>
+        <p style="color: #4b5563;">Your progress, scores, and bookmarks are all safe. You can resubscribe anytime to get everything back.</p>
+        ${buildCtaButton('Resubscribe Now', pricingUrl)}
+      </div>
+    `
+  };
+}

@@ -121,6 +121,8 @@ export class TransactionalEmailService {
       case EmailType.INACTIVITY_NUDGE:
       case EmailType.MILESTONE_CELEBRATION:
       case EmailType.SUBSCRIPTION_PROMPT:
+      case EmailType.SUBSCRIPTION_EXPIRY_WARNING:
+      case EmailType.SUBSCRIPTION_EXPIRED_NOTICE:
         return EMAIL_CONFIG.REMINDERS_FROM_ADDRESS;
       default:
         return EMAIL_CONFIG.FROM_ADDRESS;

@@ -141,6 +141,13 @@ export const MARKETING_CONFIG = {
     WELCOME_DELAY_MINUTES: parsePositiveInt(process.env.MARKETING_WELCOME_DELAY_MINUTES, 15),
 };
 
+export const SUBSCRIPTION_ALERT_CONFIG = {
+    CRON: (process.env.SUBSCRIPTION_ALERT_CRON || '0 8 * * *').trim(),
+    WARNING_DAYS: [7, 1] as const,
+    BATCH_SIZE: parsePositiveInt(process.env.SUBSCRIPTION_ALERT_BATCH_SIZE, 200),
+    APP_BASE_URL: (process.env.SUBSCRIPTION_ALERT_APP_BASE_URL || process.env.MARKETING_APP_BASE_URL || 'https://studybond.app').trim(),
+};
+
 export function getDevToolsConfig() {
     return {
         OTP_PREVIEW_ENABLED: parseBoolean(process.env.DEV_OTP_PREVIEW_ENABLED, false),
