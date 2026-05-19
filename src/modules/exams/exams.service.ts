@@ -756,11 +756,19 @@ export class ExamsService {
       );
     }
 
-    await this.enforceStartRateLimit(userId);
     const scopeKey = buildScopeKeyFromExamType(
       EXAM_TYPES.DAILY_CHALLENGE as any,
       input.subjects,
     );
+
+    const resumedSession = await this.reuseOrExpireInProgressExam(
+      userId,
+      null,
+      scopeKey,
+    );
+    if (resumedSession) {
+      return resumedSession;
+    }
 
     // Calculate start of today in GMT+1 (Nigerian Time)
     const now = new Date();
@@ -778,23 +786,13 @@ export class ExamsService {
     });
 
     if (existingChallenge) {
-      if (existingChallenge.status === EXAM_STATUS.IN_PROGRESS) {
-        const resumedSession = await this.reuseOrExpireInProgressExam(
-          userId,
-          null, // Daily challenges do not have an institution context
-          existingChallenge.nameScopeKey,
-        );
-        if (resumedSession) {
-          return resumedSession;
-        }
-        // If it returns null, the session expired and was abandoned. Fall through to block.
-      }
-
       throw new AppError(
         "You have already attempted today's Global Daily Challenge. Come back tomorrow!",
         403,
       );
     }
+
+    await this.enforceStartRateLimit(userId);
 
     const dateString = nowGmt1.toISOString().split("T")[0]; // YYYY-MM-DD
     const cacheKey = `daily_challenge_pool:${dateString}`;
@@ -934,6 +932,21 @@ export class ExamsService {
         );
         if (resumedAfterConflict) {
           return resumedAfterConflict;
+        }
+
+        const existingChallengeAfterConflict = await prisma.exam.findFirst({
+          where: {
+            userId,
+            examType: EXAM_TYPES.DAILY_CHALLENGE as any,
+            startedAt: { gte: startOfDayGmt1 },
+          },
+        });
+
+        if (existingChallengeAfterConflict) {
+          throw new AppError(
+            "You have already attempted today's Global Daily Challenge. Come back tomorrow!",
+            403,
+          );
         }
       }
       throw error;

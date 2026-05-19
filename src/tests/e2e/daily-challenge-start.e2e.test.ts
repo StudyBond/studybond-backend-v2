@@ -2,7 +2,11 @@ import { randomUUID } from 'crypto';
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../app';
 import prisma from '../../config/database';
-import { EXAM_CONFIG, EXAM_TYPES } from '../../modules/exams/exams.constants';
+import {
+  EXAM_CONFIG,
+  EXAM_STATUS,
+  EXAM_TYPES,
+} from '../../modules/exams/exams.constants';
 import { generateTokens } from '../../shared/utils/jwt';
 
 const runIntegration = process.env.RUN_INTEGRATION_TESTS === 'true';
@@ -101,6 +105,65 @@ async function createQuestions(
   }
 }
 
+async function createInProgressDailyChallengeExam(
+  fixture: E2EFixture,
+  userId: number,
+  subjects: readonly string[],
+  startedAt: Date,
+) {
+  const subjectQuestions = await prisma.question.findMany({
+    where: {
+      id: { in: fixture.questionIds },
+      subject: { in: [...subjects] },
+    },
+    select: {
+      id: true,
+      subject: true,
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  const selectedQuestionIds = subjects.map((subject) => {
+    const question = subjectQuestions.find((row) => row.subject === subject);
+    if (!question) {
+      throw new Error(`Missing seeded question for ${subject}`);
+    }
+    return question.id;
+  });
+
+  const exam = await prisma.exam.create({
+    data: {
+      userId,
+      institutionId: null,
+      examType: EXAM_TYPES.DAILY_CHALLENGE as any,
+      nameScopeKey: 'DAILY:FULL',
+      sessionNumber: 1,
+      subjectsIncluded: [...subjects],
+      totalQuestions: subjects.length,
+      score: 0,
+      percentage: 0,
+      spEarned: 0,
+      status: EXAM_STATUS.IN_PROGRESS as any,
+      startedAt,
+      isRetake: false,
+      attemptNumber: 1,
+      maxRetakes: 0,
+    },
+  });
+
+  await prisma.examAnswer.createMany({
+    data: selectedQuestionIds.map((questionId) => ({
+      examId: exam.id,
+      questionId,
+      userAnswer: null,
+      isCorrect: false,
+      timeSpentSeconds: 0,
+    })),
+  });
+
+  return exam;
+}
+
 async function cleanupFixture(fixture: E2EFixture): Promise<void> {
   if (fixture.userIds.length > 0) {
     await prisma.exam.deleteMany({
@@ -187,6 +250,143 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
 
       expect(createdExam?.nameScopeKey).toBe('DAILY:FULL');
       expect(createdExam?.sessionNumber).toBe(1);
+    } finally {
+      await cleanupFixture(fixture);
+      await app.close();
+    }
+  });
+
+  it('reuses today\'s in-progress daily challenge instead of creating a duplicate session', async () => {
+    const fixture: E2EFixture = {
+      userIds: [],
+      sessionIds: [],
+      questionIds: [],
+    };
+
+    const app = await buildApp();
+    try {
+      const user = await createUserFixture(fixture);
+      const authHeader = await createAuthHeader(fixture, user);
+      const subjects = ['Mathematics', 'English', 'Physics', 'Chemistry'] as const;
+
+      for (const subject of subjects) {
+        await createQuestions(fixture, subject, 3);
+      }
+
+      const existingExam = await createInProgressDailyChallengeExam(
+        fixture,
+        user.id,
+        subjects,
+        new Date(Date.now() - 60 * 1000),
+      );
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/exams/daily-challenge/start',
+        headers: {
+          authorization: authHeader,
+          'idempotency-key': uniqueToken('daily-challenge-reuse'),
+        },
+        payload: {
+          subjects,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as any;
+      expect(body.data.examId).toBe(existingExam.id);
+      expect(body.data.sessionNumber).toBe(1);
+      expect(body.data.questions).toHaveLength(4);
+
+      const exams = await prisma.exam.findMany({
+        where: {
+          userId: user.id,
+          examType: EXAM_TYPES.DAILY_CHALLENGE as any,
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      expect(exams).toHaveLength(1);
+      expect(exams[0]).toMatchObject({
+        id: existingExam.id,
+        status: EXAM_STATUS.IN_PROGRESS,
+      });
+    } finally {
+      await cleanupFixture(fixture);
+      await app.close();
+    }
+  });
+
+  it('abandons an expired previous-day daily challenge before starting a fresh one', async () => {
+    const fixture: E2EFixture = {
+      userIds: [],
+      sessionIds: [],
+      questionIds: [],
+    };
+
+    const app = await buildApp();
+    try {
+      const user = await createUserFixture(fixture);
+      const authHeader = await createAuthHeader(fixture, user);
+      const subjects = ['Mathematics', 'English', 'Physics', 'Chemistry'] as const;
+
+      for (const subject of subjects) {
+        await createQuestions(fixture, subject, 3);
+      }
+
+      const expiredExam = await createInProgressDailyChallengeExam(
+        fixture,
+        user.id,
+        subjects,
+        new Date(
+          Date.now() -
+            (24 * 60 * 60 +
+              EXAM_CONFIG.DAILY_CHALLENGE_DURATION_SECONDS +
+              EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS +
+              60) *
+              1000,
+        ),
+      );
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/exams/daily-challenge/start',
+        headers: {
+          authorization: authHeader,
+          'idempotency-key': uniqueToken('daily-challenge-expired-retry'),
+        },
+        payload: {
+          subjects,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as any;
+      expect(body.data.examId).not.toBe(expiredExam.id);
+      expect(body.data.sessionNumber).toBe(2);
+      expect(body.data.questions).toHaveLength(4);
+
+      const [oldExam, newExam] = await Promise.all([
+        prisma.exam.findUnique({
+          where: { id: expiredExam.id },
+          select: { status: true, completedAt: true },
+        }),
+        prisma.exam.findUnique({
+          where: { id: body.data.examId },
+          select: { status: true, sessionNumber: true, nameScopeKey: true },
+        }),
+      ]);
+
+      expect(oldExam?.status).toBe(EXAM_STATUS.ABANDONED);
+      expect(oldExam?.completedAt).not.toBeNull();
+      expect(newExam).toMatchObject({
+        status: EXAM_STATUS.IN_PROGRESS,
+        sessionNumber: 2,
+        nameScopeKey: 'DAILY:FULL',
+      });
     } finally {
       await cleanupFixture(fixture);
       await app.close();
