@@ -20,8 +20,7 @@ export type AdminAuditAction =
     | 'REPORT_REVIEWED'
     | 'REPORT_RESOLVED'
     | 'REPORT_HARD_DELETED'
-    | 'UNAUTHORIZED_ACTION_ATTEMPT'
-    | 'EXAM_CHEAT_VIOLATION';
+    | 'UNAUTHORIZED_ACTION_ATTEMPT';
 
 export type TargetType = 'USER' | 'QUESTION' | 'DEVICE' | 'SYSTEM' | 'REPORT';
 

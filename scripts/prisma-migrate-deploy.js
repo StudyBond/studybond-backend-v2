@@ -41,9 +41,17 @@ function assertSafeConnectionString(connectionString) {
     process.exit(1);
   }
 
+  if (/pooler\.supabase\.com:6543/i.test(connectionString)) {
+    console.error(
+      'Supabase transaction-mode pooler (port 6543) is not suitable for prisma migrate deploy on this backend. ' +
+      'Use the direct connection string or the Supavisor session-mode string on port 5432 instead.'
+    );
+    process.exit(1);
+  }
+
   if (/render\.com/i.test(connectionString) && !/sslmode=require/i.test(connectionString)) {
     console.error(
-      'Render PostgreSQL requires SSL. Add ?sslmode=require to the selected DIRECT_URL before running migrations.'
+      'Render PostgreSQL requires SSL. Add ?sslmode=require to the selected migration URL before running migrations.'
     );
     process.exit(1);
   }
@@ -80,7 +88,8 @@ function runPrismaMigrate(connectionString) {
     console.error('');
     console.error('Prisma migrate deploy failed.');
     console.error('Safe checks:');
-    console.error('- confirm the selected URL is a direct PostgreSQL connection, not a pooler');
+    console.error('- confirm the selected URL is a non-transactional PostgreSQL endpoint');
+    console.error('- for Supabase on Render, prefer the Supavisor session-mode connection on port 5432');
     console.error('- confirm SSL is enabled for managed hosts like Render');
     console.error('- if the Prisma schema engine is flaky on this machine, rerun the same wrapper from Linux CI or the deploy host');
     process.exit(result.status);

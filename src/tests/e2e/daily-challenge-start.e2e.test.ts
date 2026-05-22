@@ -124,7 +124,7 @@ async function createInProgressDailyChallengeExam(
   });
 
   const selectedQuestionIds = subjects.map((subject) => {
-    const question = subjectQuestions.find((row) => row.subject === subject);
+    const question = subjectQuestions.find((row: { subject: string; }) => row.subject === subject);
     if (!question) {
       throw new Error(`Missing seeded question for ${subject}`);
     }

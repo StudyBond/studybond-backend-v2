@@ -297,7 +297,32 @@ Optional:
 - Prisma 7.2
 - PostgreSQL 15+
 
-## Redis Setup (Docker)
+## Production Deployment
+
+Recommended managed production topology for the current codebase:
+- PostgreSQL on Supabase
+- Redis on Upstash
+- API on a Render web service
+- Scheduled jobs on a dedicated Render worker: `npm run worker:jobs:prod`
+- Leaderboard projection/reset on a dedicated Render worker: `npm run worker:leaderboard:prod`
+
+Why the split matters:
+- it prevents duplicated cron execution when the API scales past one instance
+- it keeps leaderboard projection and weekly reset off the request path
+- it matches Render's web-service plus worker-service model cleanly
+
+Repo assets for this move:
+- `../render.yaml`
+- `docs/render-supabase-upstash-migration.md`
+
+Provider notes:
+- From Render, use the Supabase Supavisor session-mode connection on port `5432` for `DATABASE_URL`.
+- Set `DIRECT_URL` to the same non-transactional endpoint unless you later confirm IPv6/direct connectivity.
+- Do not use the Supabase transaction-mode pooler on port `6543` for `prisma migrate deploy`.
+- For Upstash, set `REDIS_URL` to the provider's TLS-enabled `rediss://...` TCP connection string.
+- Keep `JOBS_ENABLED=false` on the API service. Only the jobs worker should set it to `true`.
+
+## Redis Setup (Local Docker)
 
 ### Why Redis is useful in current backend
 - Distributed rate limiting (critical for multi-instance deploys).
@@ -321,6 +346,11 @@ EXAM_START_RATE_LIMIT_MAX=5
 EXAM_START_RATE_LIMIT_WINDOW_SECONDS=60
 EXAM_SUBMIT_LOCK_TTL_SECONDS=30
 EXAM_HISTORY_CACHE_TTL_SECONDS=45
+```
+
+For Upstash in production, `REDIS_URL` should look like:
+```bash
+REDIS_URL=rediss://default:password@your-database.upstash.io:6379
 ```
 
 ### 3. Install Redis client dependencies
@@ -411,6 +441,8 @@ Leaderboard worker:
 ```bash
 npm run worker:leaderboard
 npm run worker:leaderboard:once
+npm run worker:leaderboard:prod
+npm run worker:leaderboard:prod:once
 ```
 
 Projection/anti-abuse flags:

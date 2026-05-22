@@ -4,20 +4,6 @@
 import prisma from '../../config/database';
 import { AuditLogEntry, AdminAuditAction, TargetType } from './admin.types';
 
-type CheatViolationAuditRow = {
-    id: bigint;
-    userId: number | null;
-    action: string;
-    metadata: unknown;
-    ipAddress: string | null;
-    createdAt: Date;
-    user: {
-        id: number;
-        email: string;
-        fullName: string;
-    } | null;
-};
-
 export class AuditService {
 
     /* Log an admin/superadmin action; This is the single source of truth for admin activity */
@@ -238,58 +224,6 @@ export class AuditService {
             where.createdAt = {};
             if (options.startDate) where.createdAt.gte = options.startDate;
             if (options.endDate) where.createdAt.lte = options.endDate;
-        }
-
-        if (options.action === 'EXAM_CHEAT_VIOLATION') {
-            const [logs, total]: [CheatViolationAuditRow[], number] = await Promise.all([
-                prisma.auditLog.findMany({
-                    where: {
-                        action: 'EXAM_CHEAT_VIOLATION' as any,
-                        userId: options.actorId,
-                        createdAt: where.createdAt
-                    },
-                    skip,
-                    take: limit,
-                    orderBy: { createdAt: 'desc' },
-                    include: {
-                        user: {
-                            select: {
-                                id: true,
-                                email: true,
-                                fullName: true
-                            }
-                        }
-                    }
-                }),
-                prisma.auditLog.count({
-                    where: {
-                        action: 'EXAM_CHEAT_VIOLATION' as any,
-                        userId: options.actorId,
-                        createdAt: where.createdAt
-                    }
-                })
-            ]);
-
-            return {
-                logs: logs.map((l) => ({
-                    id: Number(l.id),
-                    actorId: l.userId,
-                    actorRole: 'USER',
-                    action: l.action,
-                    targetType: 'USER',
-                    targetId: String(l.userId),
-                    metadata: l.metadata,
-                    ipAddress: l.ipAddress,
-                    createdAt: l.createdAt,
-                    actor: l.user
-                })),
-                meta: {
-                    page,
-                    limit,
-                    total,
-                    totalPages: Math.ceil(total / limit)
-                }
-            };
         }
 
         const [logs, total] = await Promise.all([

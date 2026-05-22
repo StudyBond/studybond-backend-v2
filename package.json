@@ -37,7 +37,11 @@
     "load:mixed": "k6 run load-tests/mixed-profile.js",
     "load:leaderboard": "k6 run load-tests/leaderboard-read-storm.js",
     "worker:leaderboard": "ts-node-dev --transpile-only src/workers/leaderboard.worker.ts",
-    "worker:leaderboard:once": "ts-node-dev --transpile-only src/workers/leaderboard.worker.ts --once"
+    "worker:leaderboard:once": "ts-node-dev --transpile-only src/workers/leaderboard.worker.ts --once",
+    "worker:leaderboard:prod": "node dist/workers/leaderboard.worker.js",
+    "worker:leaderboard:prod:once": "node dist/workers/leaderboard.worker.js --once",
+    "worker:jobs": "ts-node-dev --transpile-only src/workers/jobs.worker.ts",
+    "worker:jobs:prod": "node dist/workers/jobs.worker.js"
   },
   "keywords": [
     "studybond",

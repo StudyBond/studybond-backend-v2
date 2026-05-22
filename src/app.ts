@@ -13,6 +13,7 @@ import bookmarkExamPlugin from './modules/bookmark-exam/bookmark-exam.plugin';
 import streaksPlugin from './modules/streaks/streaks.plugin';
 import reportsPlugin from './modules/reports/reports.plugin';
 import devToolsPlugin from './modules/devtools/devtools.plugin';
+import { notificationsPlugin } from './modules/notifications/notifications.plugin';
 import helmetPlugin from './plugins/helmet';
 import corsPlugin from './plugins/cors';
 import jwtPlugin from './plugins/jwt';
@@ -98,6 +99,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await app.register(bookmarksPlugin, { prefix: '/api' });
     await app.register(bookmarkExamPlugin, { prefix: '/api' });
     await app.register(reportsPlugin, { prefix: '/api' });
+    await app.register(notificationsPlugin, { prefix: '/api' });
     await app.register(streaksPlugin, { prefix: '/api' });
     await app.register(collaborationPlugin, { prefix: '/api' });
     await app.register(leaderboardPlugin, { prefix: '/api' });

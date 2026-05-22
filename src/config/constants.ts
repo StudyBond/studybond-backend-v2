@@ -148,6 +148,19 @@ export const SUBSCRIPTION_ALERT_CONFIG = {
     APP_BASE_URL: (process.env.SUBSCRIPTION_ALERT_APP_BASE_URL || process.env.MARKETING_APP_BASE_URL || 'https://studybond.app').trim(),
 };
 
+export const NOTIFICATIONS_CONFIG = {
+    WRITE_ENABLED: parseBoolean(process.env.NOTIFICATIONS_WRITE_ENABLED, false),
+    READ_ENABLED: parseBoolean(process.env.NOTIFICATIONS_READ_ENABLED, false),
+    WS_ENABLED: parseBoolean(process.env.NOTIFICATIONS_WS_ENABLED, false),
+    ADMIN_ANNOUNCEMENTS_ENABLED: parseBoolean(process.env.NOTIFICATIONS_ADMIN_ANNOUNCEMENTS_ENABLED, false),
+    RETENTION_DAYS: parsePositiveInt(process.env.NOTIFICATIONS_RETENTION_DAYS, 90),
+    CLEANUP_CRON: (process.env.NOTIFICATIONS_CLEANUP_CRON || '20 2 * * *').trim(),
+    CLEANUP_BATCH_SIZE: parsePositiveInt(process.env.NOTIFICATIONS_CLEANUP_BATCH_SIZE, 500),
+    ACTIVITY_PAGE_SIZE: parsePositiveInt(process.env.NOTIFICATIONS_ACTIVITY_PAGE_SIZE, 20),
+    ANNOUNCEMENT_PAGE_SIZE: parsePositiveInt(process.env.NOTIFICATIONS_ANNOUNCEMENT_PAGE_SIZE, 20),
+    RECENT_ACTIVITY_LIMIT: parsePositiveInt(process.env.NOTIFICATIONS_RECENT_ACTIVITY_LIMIT, 6),
+};
+
 export function getDevToolsConfig() {
     return {
         OTP_PREVIEW_ENABLED: parseBoolean(process.env.DEV_OTP_PREVIEW_ENABLED, false),
