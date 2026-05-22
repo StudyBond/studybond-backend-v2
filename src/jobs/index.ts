@@ -1,12 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import cron from 'node-cron';
-import { ADMIN_ANALYTICS_CONFIG, AUTH_CONFIG, BOOKMARK_CONFIG, MARKETING_CONFIG, STREAK_CONFIG, SUBSCRIPTION_ALERT_CONFIG } from '../config/constants';
+import { ADMIN_ANALYTICS_CONFIG, AUTH_CONFIG, BOOKMARK_CONFIG, MARKETING_CONFIG, NOTIFICATIONS_CONFIG, STREAK_CONFIG, SUBSCRIPTION_ALERT_CONFIG } from '../config/constants';
 import { refreshAdminAnalyticsRollups } from './admin-analytics-rollups';
 import { runExpiredBookmarkCleanup } from './bookmark-cleanup';
 import { runStreakReconciliation, runStreakReminderCheck } from './email-reminders';
 import { runMarketingCampaigns } from './marketing-campaigns';
+import { runNotificationMaintenance } from './notification-maintenance';
 import { runPasswordChangeAlertCheck } from './password-change-alerts';
-import { runWeeklyLeaderboardReset } from './weekly-reset';
 import { runSubscriptionExpiryCheck } from './subscription-check';
 import { runSubscriptionAlerts } from './subscription-expiry-alerts';
 
@@ -18,13 +18,6 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     app.log.info('Background jobs are disabled (JOBS_ENABLED=false).');
     return;
   }
-
-  const weeklyResetTask = cron.schedule('59 23 * * 0', async () => {
-    app.log.info('Running weekly leaderboard reset job.');
-    await runWeeklyLeaderboardReset(app);
-  }, {
-    timezone: JOBS_TIMEZONE
-  });
 
   const subscriptionExpiryTask = cron.schedule('0 0 * * *', async () => {
     app.log.info('Running subscription expiry reconciliation job.');
@@ -90,8 +83,15 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     timezone: JOBS_TIMEZONE
   });
 
+  const notificationMaintenanceTask = cron.schedule(NOTIFICATIONS_CONFIG.CLEANUP_CRON, async () => {
+    app.log.info('Running notification maintenance job.');
+    const result = await runNotificationMaintenance();
+    app.log.info(result, 'Notification maintenance job finished.');
+  }, {
+    timezone: JOBS_TIMEZONE
+  });
+
   app.addHook('onClose', async () => {
-    weeklyResetTask.stop();
     subscriptionExpiryTask.stop();
     passwordChangeAlertTask.stop();
     bookmarkCleanupTask.stop();
@@ -100,6 +100,7 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     streakReconciliationTask.stop();
     marketingCampaignTask.stop();
     subscriptionAlertTask.stop();
+    notificationMaintenanceTask.stop();
   });
 
   app.log.info({ timezone: JOBS_TIMEZONE }, 'Background jobs scheduled.');

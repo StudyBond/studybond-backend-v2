@@ -7,6 +7,8 @@ import {
   buildSubscriptionExpiredNoticeTemplate
 } from '../shared/email/email.templates';
 import { getGlobalMetricsRegistry } from '../shared/metrics/global';
+import { NotificationKind } from '@prisma/client';
+import { notificationsService } from '../modules/notifications/notifications.service';
 
 // ============================================
 // TYPES
@@ -98,6 +100,25 @@ async function runExpiryWarningAlerts(now: Date): Promise<AlertResult> {
         const daysRemaining = Math.max(1, Math.ceil(
           (sub.endDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)
         ));
+
+        await notificationsService.createActivityNotification({
+          userId: user.id,
+          kind: NotificationKind.SUBSCRIPTION_EXPIRY_WARNING,
+          title: `Premium expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}`,
+          body: sub.autoRenew
+            ? 'Your renewal window is approaching. Double-check your payment method so premium stays uninterrupted.'
+            : 'Your premium access is close to ending. Renew when you are ready to keep your study flow going.',
+          deeplink: '/dashboard/settings?tab=subscription',
+          payload: {
+            warningDays,
+            daysRemaining,
+            autoRenew: sub.autoRenew,
+            endDate: sub.endDate.toISOString()
+          },
+          dedupKey: `subscription-warning:${warningDays}:${sub.endDate.toISOString()}`,
+          sourceType: 'SUBSCRIPTION_ALERT',
+          sourceId: String(sub.id)
+        });
 
         const template = buildSubscriptionExpiryWarningTemplate(
           user.fullName,

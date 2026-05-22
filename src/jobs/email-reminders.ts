@@ -4,6 +4,7 @@ import { transactionalEmailService } from '../shared/email/email.service';
 import { buildStreakAlertTemplate, buildSubscriptionPromptTemplate } from '../shared/email/email.templates';
 import { getGlobalMetricsRegistry } from '../shared/metrics/global';
 import { getNextMilestone } from '../shared/streaks/domain';
+import { notificationsService } from '../modules/notifications/notifications.service';
 
 const PREMIUM_STREAK_MESSAGES = [
   'Your StudyBond streak is sweating a little. A quick exam tonight keeps it safe.',
@@ -25,9 +26,12 @@ export async function runStreakReminderCheck(now = new Date()): Promise<{
   freeCandidates: number;
   freeSent: number;
   failures: number;
+  notificationCandidates: number;
+  notificationsCreated: number;
 }> {
   const metrics = getGlobalMetricsRegistry();
   const startedAt = Date.now();
+  const notificationResult = await notificationsService.createStreakRiskNotifications(now);
 
   const [premiumCandidates, freeCandidates] = await Promise.all([
     streaksService.listPremiumReminderCandidates(now),
@@ -117,7 +121,9 @@ export async function runStreakReminderCheck(now = new Date()): Promise<{
     premiumSent,
     freeCandidates: freeCandidates.length,
     freeSent,
-    failures
+    failures,
+    notificationCandidates: notificationResult.candidates,
+    notificationsCreated: notificationResult.created
   };
 }
 
