@@ -41,9 +41,10 @@ enum AdminAuditAction {
   REPORT_RESOLVED
   REPORT_HARD_DELETED
   UNAUTHORIZED_ACTION_ATTEMPT
-  EXAM_CHEAT_VIOLATION
   FREE_EXAM_CREDITS_RESET
   FREE_EXAM_QUESTIONS_TOGGLED
+  NOTIFICATION_ANNOUNCEMENT_CREATED
+  NOTIFICATION_ANNOUNCEMENT_CANCELLED
 }
 
 enum ExamType {
@@ -218,12 +219,49 @@ enum AuditAction {
   ADMIN_DEVICE_RESET
   ADMIN_FORCE_LOGOUT
   LEADERBOARD_SIGNAL_FLAGGED
-  EXAM_CHEAT_VIOLATION
 }
 
 enum AchievementKey {
   STREAK_7_DAY_STARTER
   COLLABORATION_30_COMPLETIONS
+}
+
+enum NotificationKind {
+  STREAK_MILESTONE
+  STREAK_FREEZER_AWARDED
+  STREAK_AT_RISK
+  ACHIEVEMENT_UNLOCKED
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_EXTENDED
+  SUBSCRIPTION_EXPIRY_WARNING
+  SUBSCRIPTION_EXPIRED
+  REPORT_REVIEWED
+  REPORT_RESOLVED
+  COLLAB_SESSION_STARTED
+  COLLAB_SESSION_CANCELLED
+  COLLAB_SESSION_COMPLETED
+}
+
+enum NotificationCategory {
+  STREAKS
+  ACHIEVEMENTS
+  COLLABORATION
+  SUBSCRIPTION
+  REPORTS
+  ANNOUNCEMENTS
+}
+
+enum NotificationPriority {
+  LOW
+  DEFAULT
+  HIGH
+  URGENT
+}
+
+enum NotificationAnnouncementAudience {
+  ALL
+  PREMIUM
+  FREE
 }
 
 
@@ -290,6 +328,7 @@ model User {
   lastStreakReminder    DateTime? @db.Date
   emailUnsubscribed     Boolean   @default(false)
   emailPreferences     Json?
+  notificationPreferences Json?
 
   // === BAN STATUS ===
   isBanned              Boolean   @default(false)
@@ -322,6 +361,9 @@ model User {
   resolvedQuestionReports QuestionReport[] @relation("QuestionReportResolvedBy")
   auditLogs               AuditLog[]
   adminAuditLogs          AdminAuditLog[]
+  userNotifications       UserNotification[]
+  notificationAnnouncementReceipts NotificationAnnouncementReceipt[]
+  createdNotificationAnnouncements NotificationAnnouncement[] @relation("NotificationAnnouncementCreatedBy")
   examSessionCounters     ExamSessionCounter[]
   collaborationSessionCounters CollaborationSessionCounter[]
   idempotencyRecords      IdempotencyRecord[]
@@ -448,6 +490,7 @@ model Institution {
   exams       Exam[]
   collaborationSessions CollaborationSession[]
   userStats UserInstitutionStats[]
+  notificationAnnouncements NotificationAnnouncement[]
   weeklyLeaderboardEntries WeeklyLeaderboard[]
   leaderboardProjectionEvents LeaderboardProjectionEvent[]
   leaderboardIntegritySignals LeaderboardIntegritySignal[]
@@ -914,6 +957,78 @@ model IdempotencyRecord {
   @@index([expiresAt])
   @@index([expiresAt, userId])
   @@index([state])
+}
+
+model UserNotification {
+  id           BigInt               @id @default(autoincrement())
+  userId       Int
+  kind         NotificationKind
+  category     NotificationCategory
+  priority     NotificationPriority @default(DEFAULT)
+  title        String
+  body         String               @db.Text
+  deeplink     String?
+  payload      Json?
+  dedupKey     String
+  sourceType   String
+  sourceId     String?
+  availableAt  DateTime             @default(now())
+  expiresAt    DateTime?
+  readAt       DateTime?
+  dismissedAt  DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupKey])
+  @@index([userId, createdAt])
+  @@index([userId, readAt, createdAt])
+  @@index([userId, dismissedAt, createdAt])
+  @@index([availableAt, expiresAt])
+  @@index([category, createdAt])
+}
+
+model NotificationAnnouncement {
+  id               BigInt                           @id @default(autoincrement())
+  title            String
+  body             String                           @db.Text
+  deeplink         String?
+  priority         NotificationPriority             @default(DEFAULT)
+  targetAudience   NotificationAnnouncementAudience @default(ALL)
+  institutionId    Int?
+  verifiedOnly     Boolean                          @default(false)
+  startAt          DateTime
+  expiresAt        DateTime?
+  cancelledAt      DateTime?
+  createdByAdminId Int
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
+
+  institution      Institution?                     @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  createdByAdmin   User                             @relation("NotificationAnnouncementCreatedBy", fields: [createdByAdminId], references: [id])
+  receipts         NotificationAnnouncementReceipt[]
+
+  @@index([startAt, expiresAt, cancelledAt])
+  @@index([targetAudience, startAt, cancelledAt])
+  @@index([institutionId, startAt, cancelledAt])
+  @@index([createdByAdminId, createdAt])
+}
+
+model NotificationAnnouncementReceipt {
+  id             BigInt                  @id @default(autoincrement())
+  announcementId BigInt
+  userId         Int
+  readAt         DateTime?
+  dismissedAt    DateTime?
+  createdAt      DateTime                @default(now())
+
+  announcement   NotificationAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([userId, createdAt])
+  @@index([announcementId, createdAt])
 }
 
 model LeaderboardProjectionEvent {
