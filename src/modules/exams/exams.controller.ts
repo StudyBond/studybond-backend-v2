@@ -8,8 +8,7 @@ import {
     startDailyChallengeSchema,
     submitExamSchema,
     examIdParamSchema,
-    historyQuerySchema,
-    reportViolationSchema
+    historyQuerySchema
 } from './exams.schema';
 import { parseWithSchema } from '../../shared/utils/validation';
 import { optionalIdempotencyHeadersSchema } from '../../shared/idempotency/schema';
@@ -184,26 +183,6 @@ export class ExamsController {
         const result = await this.examsService.abandonExam(
             userId,
             params.examId
-        );
-
-        return reply.status(200).send({
-            success: true,
-            data: result
-        });
-    };
-    /* POST /exams/:examId/violations - Report an anti-cheat violation */
-    reportViolation = async (
-        req: FastifyRequest,
-        reply: FastifyReply
-    ) => {
-        const params = parseWithSchema(examIdParamSchema, req.params, 'Invalid exam ID');
-        const payload = parseWithSchema(reportViolationSchema, req.body, 'Invalid violation payload');
-
-        const userId = (req.user as { userId: number }).userId;
-        const result = await this.examsService.reportViolation(
-            userId,
-            params.examId,
-            payload
         );
 
         return reply.status(200).send({

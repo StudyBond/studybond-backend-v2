@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { NotificationKind } from '@prisma/client';
 import prisma from '../../config/database';
 import { AppError } from '../../shared/errors/AppError';
 import { AuthError } from '../../shared/errors/AuthError';
@@ -31,6 +32,7 @@ import {
   finalizeCollaborationSubmission,
   type CollaborationSubmissionFinalizationResult
 } from './collaboration-completion';
+import { notificationsService } from '../notifications/notifications.service';
 
 type TxClient = any;
 
@@ -963,8 +965,28 @@ export class CollaborationService {
             }
 
             const myExam = createdExams.find((exam) => exam.userId === userId);
+            const sessionSnapshot = this.mapSessionSnapshot(updatedSession, myExam?.id ?? null);
+            const notificationEvents = await notificationsService.createActivityNotificationsTx(
+              tx,
+              updatedSession.participants.map((participant) => ({
+                userId: participant.userId,
+                kind: NotificationKind.COLLAB_SESSION_STARTED,
+                title: 'Collaboration session started',
+                body: `${sessionSnapshot.session.effectiveDisplayName} is live. Jump in and finish strong.`,
+                deeplink: `/dashboard/collaboration/${updatedSession.sessionCode}`,
+                payload: {
+                  sessionId: updatedSession.id,
+                  sessionCode: updatedSession.sessionCode,
+                  sessionType: updatedSession.sessionType
+                },
+                dedupKey: `collab:${updatedSession.id}:started`,
+                sourceType: 'COLLABORATION_SESSION',
+                sourceId: String(updatedSession.id)
+              }))
+            );
+
             return {
-              session: this.mapSessionSnapshot(updatedSession, myExam?.id ?? null),
+              session: sessionSnapshot,
               questions: questions.map((question) => this.mapQuestionForClient(question)),
               examAssignments: createdExams.map((exam) => ({
                 userId: exam.userId,
@@ -972,11 +994,15 @@ export class CollaborationService {
               })),
               timeAllowedSeconds: durationSeconds,
               startedAt: startedAt.toISOString(),
-              expiresAt: expiresAt.toISOString()
+              expiresAt: expiresAt.toISOString(),
+              notificationEvents
             };
           });
 
           await this.incrementMetric('start_success');
+          if (started.notificationEvents.length > 0) {
+            await notificationsService.publishCreatedActivityEvents(started.notificationEvents);
+          }
           await this.publishSessionEvent(sessionId, {
             type: COLLAB_WEBSOCKET_EVENTS.SESSION_STARTED,
             payload: {
@@ -1034,12 +1060,16 @@ export class CollaborationService {
             return {
               success: true,
               message: 'You are already outside this collaboration session.',
-              session: lockedSession
+              session: lockedSession,
+              notificationEvents: []
             };
           }
 
+          let cancelledByHost = false;
+
           if (lockedSession.status === COLLAB_SESSION_STATUS.WAITING) {
             if (lockedSession.hostUserId === userId) {
+              cancelledByHost = true;
               await tx.collaborationSession.update({
                 where: { id: lockedSession.id },
                 data: {
@@ -1083,9 +1113,32 @@ export class CollaborationService {
           return {
             success: true,
             message: 'You have left the collaboration session.',
-            session: updated ?? lockedSession
+            session: updated ?? lockedSession,
+            notificationEvents: cancelledByHost && updated
+              ? await notificationsService.createActivityNotificationsTx(
+                  tx,
+                  updated.participants.map((participant) => ({
+                    userId: participant.userId,
+                    kind: NotificationKind.COLLAB_SESSION_CANCELLED,
+                    title: 'Collaboration session cancelled',
+                    body: 'The host ended this collaboration session before it started.',
+                    deeplink: '/dashboard/collaboration',
+                    payload: {
+                      sessionId: updated.id,
+                      sessionCode: updated.sessionCode
+                    },
+                    dedupKey: `collab:${updated.id}:cancelled`,
+                    sourceType: 'COLLABORATION_SESSION',
+                    sourceId: String(updated.id)
+                  }))
+                )
+              : []
           };
         });
+
+        if (result.notificationEvents.length > 0) {
+          await notificationsService.publishCreatedActivityEvents(result.notificationEvents);
+        }
 
         if (result.session) {
           await this.publishSessionEvent(result.session.id, {
@@ -1142,7 +1195,10 @@ export class CollaborationService {
             lockedSession.status !== COLLAB_SESSION_STATUS.WAITING &&
             lockedSession.status !== COLLAB_SESSION_STATUS.IN_PROGRESS
           ) {
-            return lockedSession;
+            return {
+              session: lockedSession,
+              notificationEvents: []
+            };
           }
 
           await tx.collaborationSession.update({
@@ -1155,23 +1211,50 @@ export class CollaborationService {
             }
           });
 
-          return this.findSessionById(lockedSession.id, tx);
+          const updatedSession = await this.findSessionById(lockedSession.id, tx);
+          if (!updatedSession) {
+            return null;
+          }
+
+          return {
+            session: updatedSession,
+            notificationEvents: await notificationsService.createActivityNotificationsTx(
+              tx,
+              updatedSession.participants.map((participant) => ({
+                userId: participant.userId,
+                kind: NotificationKind.COLLAB_SESSION_CANCELLED,
+                title: 'Collaboration session cancelled',
+                body: 'This collaboration session was cancelled before completion.',
+                deeplink: '/dashboard/collaboration',
+                payload: {
+                  sessionId: updatedSession.id,
+                  sessionCode: updatedSession.sessionCode
+                },
+                dedupKey: `collab:${updatedSession.id}:cancelled`,
+                sourceType: 'COLLABORATION_SESSION',
+                sourceId: String(updatedSession.id)
+              }))
+            )
+          };
         });
 
-        if (!cancelled) {
+        if (!cancelled?.session) {
           throw new AppError('Failed to cancel collaboration session.', 500, 'COLLAB_CANCEL_FAILED');
         }
 
         await this.incrementMetric('session_cancelled');
-        await this.publishSessionEvent(cancelled.id, {
+        if (cancelled.notificationEvents.length > 0) {
+          await notificationsService.publishCreatedActivityEvents(cancelled.notificationEvents);
+        }
+        await this.publishSessionEvent(cancelled.session.id, {
           type: COLLAB_WEBSOCKET_EVENTS.SESSION_CANCELLED,
           payload: {
-            sessionId: cancelled.id,
-            endedAt: cancelled.endedAt ? cancelled.endedAt.toISOString() : this.nowIso()
+            sessionId: cancelled.session.id,
+            endedAt: cancelled.session.endedAt ? cancelled.session.endedAt.toISOString() : this.nowIso()
           }
         });
 
-        return this.mapSessionSnapshot(cancelled);
+        return this.mapSessionSnapshot(cancelled.session);
       }
     );
   }
@@ -1473,7 +1556,7 @@ export class CollaborationService {
     examId: number
   ): Promise<void> {
     const now = new Date();
-    const result = await this.withTransaction(async (tx: TxClient) => {
+    const outcome = await this.withTransaction(async (tx: TxClient) => {
       const session = await this.findSessionById(sessionId, tx);
       if (!session) {
         throw new NotFoundError('Collaboration session not found.');
@@ -1507,21 +1590,54 @@ export class CollaborationService {
         throw new ValidationError('Submit your exam before marking yourself as finished.');
       }
 
-      return finalizeCollaborationSubmission(tx, {
+      const result = await finalizeCollaborationSubmission(tx, {
         sessionId,
         userId,
         finishedAt: now,
         score: exam.score,
         spEarned: exam.spEarned
       });
+
+      const notificationEvents = result.sessionCompletedNow
+        ? await notificationsService.createActivityNotificationsTx(
+            tx,
+            result.standings.map((standing) => ({
+              userId: standing.userId,
+              kind: NotificationKind.COLLAB_SESSION_COMPLETED,
+              title: 'Collaboration session completed',
+              body: standing.rank === 1
+                ? `You finished first in this session with ${standing.score} correct answers.`
+                : `Session finished. You placed #${standing.rank} with ${standing.score} correct answers.`,
+              deeplink: '/dashboard/history',
+              payload: {
+                sessionId,
+                rank: standing.rank,
+                score: standing.score,
+                spEarned: standing.spEarned
+              },
+              dedupKey: `collab:${sessionId}:completed`,
+              sourceType: 'COLLABORATION_SESSION',
+              sourceId: String(sessionId)
+            }))
+          )
+        : [];
+
+      return {
+        result,
+        notificationEvents
+      };
     });
+
+    if (outcome.notificationEvents.length > 0) {
+      await notificationsService.publishCreatedActivityEvents(outcome.notificationEvents);
+    }
 
     await this.publishParticipantFinishedRealtime({
       sessionId,
       userId,
       examId,
       finishedAt: now.toISOString(),
-      result
+      result: outcome.result
     });
   }
 

@@ -165,15 +165,4 @@ export async function examsRoutes(app: FastifyInstance) {
         }
     }, controller.abandonExam);
 
-    /* POST /exams/:examId/violations - Report an anti-cheat violation */
-    app.post('/:examId/violations', {
-        preValidation: [app.authenticate],
-        schema: {
-            tags: ['Exams'],
-            summary: 'Report exam violation',
-            description: 'Reports an anti-cheat violation during an exam (e.g. tab switch, screenshot).',
-            params: examIdParamSchema,
-            security: [{ bearerAuth: [] }]
-        }
-    }, controller.reportViolation);
 }

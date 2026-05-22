@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { NotificationKind, Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { auditService } from '../admin/audit.service';
 import { hasRoleAtLeast } from '../../shared/decorators/requireAdmin';
@@ -11,6 +11,7 @@ import {
   ReportQuery,
   UpdateReportStatusInput
 } from './reports.schema';
+import { notificationsService } from '../notifications/notifications.service';
 
 type ReportTx = Prisma.TransactionClient;
 
@@ -415,7 +416,7 @@ export class ReportsService {
   ) {
     await this.assertAdminAccess(actorId, actorRole, 'UPDATE_REPORT_STATUS', String(reportId), ipAddress);
 
-    return prisma.$transaction(async (tx: ReportTx) => {
+    const result = await prisma.$transaction(async (tx: ReportTx) => {
       const existing = await tx.questionReport.findUnique({
         where: { id: reportId },
         include: adminReportInclude
@@ -491,8 +492,45 @@ export class ReportsService {
         ipAddress
       });
 
-      return serializeAdminReport(updated);
+      const notificationEvents = await notificationsService.createActivityNotificationsTx(tx, [
+        {
+          userId: existing.userId,
+          kind: input.status === 'REVIEWED'
+            ? NotificationKind.REPORT_REVIEWED
+            : NotificationKind.REPORT_RESOLVED,
+          title: input.status === 'REVIEWED'
+            ? 'Your report is under review'
+            : 'Your report has been resolved',
+          body: updated.adminNote
+            ? updated.adminNote
+            : input.status === 'REVIEWED'
+              ? 'We reviewed your report and the team is acting on it.'
+              : 'Thanks for reporting this. The issue is now marked as resolved.',
+          deeplink: '/dashboard/notifications',
+          payload: {
+            reportId: updated.id,
+            questionId: updated.questionId,
+            status: updated.status,
+            issueType: updated.issueType,
+            adminNote: updated.adminNote
+          },
+          dedupKey: `report:${updated.id}:status:${updated.status}`,
+          sourceType: 'QUESTION_REPORT',
+          sourceId: String(updated.id)
+        }
+      ]);
+
+      return {
+        report: serializeAdminReport(updated),
+        notificationEvents
+      };
     });
+
+    if (result.notificationEvents.length > 0) {
+      await notificationsService.publishCreatedActivityEvents(result.notificationEvents);
+    }
+
+    return result.report;
   }
 
   async hardDeleteReport(

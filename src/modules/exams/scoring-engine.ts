@@ -1,11 +1,16 @@
 // Atomic score and Study Points (SP) calc (keeps things consistent during races)
-import { AchievementKey } from '@prisma/client';
+import { AchievementKey, NotificationKind } from '@prisma/client';
 import { SP_MULTIPLIERS, EXAM_TYPES } from './exams.constants';
 import { SPCalculation } from './exams.types';
 import { awardAchievementIfMissingTx } from '../../shared/achievements/service';
+import { ACHIEVEMENT_CATALOG } from '../../shared/achievements/catalog';
 import { upsertUserInstitutionStatsTx } from '../../shared/institutions/user-stats';
 import { queueLeaderboardProjectionEventTx } from '../../shared/leaderboard/projection';
 import { calculateNextStreakValues, getLagosDateValue } from '../../shared/streaks/domain';
+import {
+    notificationsService,
+    type CreatedActivityNotificationEvent
+} from '../notifications/notifications.service';
 
 
 // Figure out the SP multiplier based on exam type and if they're retaking
@@ -157,7 +162,12 @@ export async function updateUserStats(
     examType: string,
     isCollaboration: boolean,
     institutionId?: number | null
-): Promise<{ totalSp: number; weeklySp: number; currentStreak: number }> {
+): Promise<{
+    totalSp: number;
+    weeklySp: number;
+    currentStreak: number;
+    notificationEvents: CreatedActivityNotificationEvent[];
+}> {
     const now = new Date();
     const today = getLagosDateValue(now);
 
@@ -187,6 +197,7 @@ export async function updateUserStats(
         user.streakFreezesAvailable,
         now
     );
+    const notificationInputs: Parameters<typeof notificationsService.createActivityNotificationsTx>[1] = [];
 
     // Update realExamsCompleted if this is a real past question exam
     const realExamsIncrement = examType === EXAM_TYPES.REAL_PAST_QUESTION ? 1 : 0;
@@ -223,17 +234,109 @@ export async function updateUserStats(
     });
 
     if (streakUpdate.milestonesUnlocked.includes(7)) {
+        const existingStarterAchievement = await tx.userAchievement.findUnique({
+            where: {
+                userId_key: {
+                    userId,
+                    key: AchievementKey.STREAK_7_DAY_STARTER
+                }
+            },
+            select: { id: true }
+        });
         await awardAchievementIfMissingTx(tx, userId, AchievementKey.STREAK_7_DAY_STARTER, {
             unlockedBy: 'STREAK_MILESTONE',
             milestoneDays: 7,
             longestStreak: streakUpdate.longestStreak
         });
+
+        if (!existingStarterAchievement) {
+            const definition = ACHIEVEMENT_CATALOG[AchievementKey.STREAK_7_DAY_STARTER];
+            notificationInputs.push({
+                userId,
+                kind: NotificationKind.ACHIEVEMENT_UNLOCKED,
+                title: `Achievement unlocked: ${definition.title}`,
+                body: definition.description,
+                deeplink: '/dashboard/settings',
+                payload: {
+                    achievementKey: definition.key,
+                    title: definition.title,
+                    category: definition.category
+                },
+                dedupKey: `achievement:${definition.key}`,
+                sourceType: 'ACHIEVEMENT',
+                sourceId: definition.key
+            });
+        }
     }
 
     if (isCollaboration && updatedUser.completedCollaborationExams >= 30) {
+        const existingCollabAchievement = await tx.userAchievement.findUnique({
+            where: {
+                userId_key: {
+                    userId,
+                    key: AchievementKey.COLLABORATION_30_COMPLETIONS
+                }
+            },
+            select: { id: true }
+        });
         await awardAchievementIfMissingTx(tx, userId, AchievementKey.COLLABORATION_30_COMPLETIONS, {
             unlockedBy: 'COLLABORATION_COMPLETION_COUNT',
             completedCollaborationExams: updatedUser.completedCollaborationExams
+        });
+
+        if (!existingCollabAchievement) {
+            const definition = ACHIEVEMENT_CATALOG[AchievementKey.COLLABORATION_30_COMPLETIONS];
+            notificationInputs.push({
+                userId,
+                kind: NotificationKind.ACHIEVEMENT_UNLOCKED,
+                title: `Achievement unlocked: ${definition.title}`,
+                body: definition.description,
+                deeplink: '/dashboard/settings',
+                payload: {
+                    achievementKey: definition.key,
+                    title: definition.title,
+                    category: definition.category
+                },
+                dedupKey: `achievement:${definition.key}`,
+                sourceType: 'ACHIEVEMENT',
+                sourceId: definition.key
+            });
+        }
+    }
+
+    for (const milestoneDays of streakUpdate.milestonesUnlocked) {
+        notificationInputs.push({
+            userId,
+            kind: NotificationKind.STREAK_MILESTONE,
+            title: `You hit a ${milestoneDays}-day streak`,
+            body: milestoneDays >= 30
+                ? 'Consistency like this compounds fast. Keep the streak moving.'
+                : 'Your study rhythm is real now. Keep showing up for yourself.',
+            deeplink: '/dashboard',
+            payload: {
+                milestoneDays,
+                currentStreak: streakUpdate.currentStreak,
+                longestStreak: streakUpdate.longestStreak
+            },
+            dedupKey: `streak-milestone:${milestoneDays}`,
+            sourceType: 'STREAK',
+            sourceId: String(milestoneDays)
+        });
+    }
+
+    if (streakUpdate.streakFreezesAvailable > user.streakFreezesAvailable) {
+        notificationInputs.push({
+            userId,
+            kind: NotificationKind.STREAK_FREEZER_AWARDED,
+            title: 'Streak freezer awarded',
+            body: 'You earned a streak freezer. One rough day no longer has to end your run.',
+            deeplink: '/dashboard',
+            payload: {
+                streakFreezesAvailable: streakUpdate.streakFreezesAvailable
+            },
+            dedupKey: `streak-freezer:${streakUpdate.currentStreak}`,
+            sourceType: 'STREAK',
+            sourceId: String(streakUpdate.currentStreak)
         });
     }
 
@@ -265,10 +368,16 @@ export async function updateUserStats(
         source: 'EXAM_SUBMIT'
     });
 
+    const notificationEvents = await notificationsService.createActivityNotificationsTx(
+        tx,
+        notificationInputs
+    );
+
     return {
         totalSp: updatedUser.totalSp,
         weeklySp: updatedUser.weeklySp,
-        currentStreak: updatedUser.currentStreak
+        currentStreak: updatedUser.currentStreak,
+        notificationEvents
     };
 }
 

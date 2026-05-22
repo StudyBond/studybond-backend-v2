@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { FastifyInstance } from 'fastify';
-import { PaymentProvider, Prisma, SubscriptionPaymentStatus, SubscriptionStatus } from '@prisma/client';
+import { NotificationKind, PaymentProvider, Prisma, SubscriptionPaymentStatus, SubscriptionStatus } from '@prisma/client';
 import prisma from '../../config/database';
 import { AUTH_CONFIG, SUBSCRIPTION_CONFIG } from '../../config/constants';
 import { AppError } from '../../shared/errors/AppError';
@@ -35,6 +35,10 @@ import {
   SubscriptionPaymentProvider
 } from './payment-provider';
 import { getSubscriptionPaymentProvider } from './payment-provider-registry';
+import {
+  notificationsService,
+  type CreatedActivityNotificationEvent
+} from '../notifications/notifications.service';
 
 type SubscriptionRecord = Prisma.SubscriptionGetPayload<{
   select: {
@@ -75,6 +79,10 @@ interface PaymentMetadata extends Record<string, unknown> {
   planType: string;
   requestedAutoRenew: boolean;
 }
+
+type VerifySubscriptionInternalResponse = VerifySubscriptionResponse & {
+  notificationEvents?: CreatedActivityNotificationEvent[];
+};
 
 function requireIdempotencyKey(idempotencyKey: string | undefined): string {
   const normalized = idempotencyKey?.trim();
@@ -413,7 +421,7 @@ export class SubscriptionService {
     tx: AuthTx,
     payment: NormalizedVerifiedPayment,
     source: PaymentVerificationSource
-  ): Promise<VerifySubscriptionResponse> {
+  ): Promise<VerifySubscriptionInternalResponse> {
     let existingPayment = await tx.subscriptionPayment.findUnique({
       where: { reference: payment.reference }
     });
@@ -551,6 +559,11 @@ export class SubscriptionService {
     const activationMoment = payment.paidAt && Number.isFinite(payment.paidAt.getTime())
       ? payment.paidAt
       : new Date();
+    const isExtension = Boolean(
+      existingSubscription &&
+      existingSubscription.status === SubscriptionStatus.ACTIVE &&
+      existingSubscription.endDate > activationMoment
+    );
     const effectiveStart = existingSubscription &&
       existingSubscription.status === SubscriptionStatus.ACTIVE &&
       existingSubscription.endDate > activationMoment
@@ -628,6 +641,31 @@ export class SubscriptionService {
       }
     });
 
+    const notificationEvents = await notificationsService.createActivityNotificationsTx(tx, [
+      {
+        userId: payment.userId,
+        kind: isExtension
+          ? NotificationKind.SUBSCRIPTION_EXTENDED
+          : NotificationKind.SUBSCRIPTION_ACTIVATED,
+        title: isExtension
+          ? 'Premium extended successfully'
+          : 'Premium access is live',
+        body: isExtension
+          ? 'Your premium plan has been extended, so your focus stays uninterrupted.'
+          : 'You now have premium access across StudyBond. Welcome to deeper study mode.',
+        deeplink: '/dashboard/settings?tab=subscription',
+        payload: {
+          paymentReference: payment.reference,
+          source,
+          autoRenew: payment.requestedAutoRenew,
+          endDate: nextEndDate.toISOString()
+        },
+        dedupKey: `subscription-payment:${payment.reference}:${isExtension ? 'extended' : 'activated'}`,
+        sourceType: 'SUBSCRIPTION_PAYMENT',
+        sourceId: payment.reference
+      }
+    ]);
+
     return {
       activated: true,
       paymentStatus: 'SUCCESS',
@@ -643,7 +681,8 @@ export class SubscriptionService {
         startDate: subscription.startDate,
         endDate: subscription.endDate,
         autoRenew: subscription.autoRenew
-      })
+      }),
+      notificationEvents
     };
   }
 
@@ -680,6 +719,10 @@ export class SubscriptionService {
       }
     );
 
+    if (result.notificationEvents && result.notificationEvents.length > 0) {
+      await notificationsService.publishCreatedActivityEvents(result.notificationEvents);
+    }
+
     this.metricCounter('subscription_verification_total', {
       source,
       provider: normalizedPayment.provider,
@@ -691,7 +734,12 @@ export class SubscriptionService {
       provider: normalizedPayment.provider
     });
 
-    return result;
+    return {
+      activated: result.activated,
+      paymentStatus: result.paymentStatus,
+      message: result.message,
+      subscription: result.subscription
+    };
   }
 
   async getStatus(userId: number): Promise<SubscriptionStatusResponse> {
@@ -908,6 +956,7 @@ export class SubscriptionService {
     });
 
     let expiredUsers = 0;
+    const notificationEvents: CreatedActivityNotificationEvent[] = [];
 
     for (const due of dueSubscriptions) {
       const changed = await prisma.$transaction(
@@ -917,7 +966,10 @@ export class SubscriptionService {
           });
 
           if (!subscription || subscription.status !== SubscriptionStatus.ACTIVE || subscription.endDate > new Date()) {
-            return false;
+            return {
+              changed: false,
+              notificationEvents: [] as CreatedActivityNotificationEvent[]
+            };
           }
 
           await tx.subscription.update({
@@ -940,7 +992,24 @@ export class SubscriptionService {
             }
           });
 
-          return true;
+          return {
+            changed: true,
+            notificationEvents: await notificationsService.createActivityNotificationsTx(tx, [
+              {
+                userId: due.userId,
+                kind: NotificationKind.SUBSCRIPTION_EXPIRED,
+                title: 'Premium access expired',
+                body: 'Your premium period has ended. Renew anytime to restore premium study access.',
+                deeplink: '/dashboard/settings?tab=subscription',
+                payload: {
+                  endDate: subscription.endDate.toISOString()
+                },
+                dedupKey: `subscription-expired:${subscription.id}:${subscription.endDate.toISOString()}`,
+                sourceType: 'SUBSCRIPTION_EXPIRY',
+                sourceId: String(subscription.id)
+              }
+            ])
+          };
         },
         {
           maxWait: AUTH_CONFIG.TX_MAX_WAIT_MS,
@@ -948,9 +1017,14 @@ export class SubscriptionService {
         }
       );
 
-      if (changed) {
+      if (changed.changed) {
         expiredUsers += 1;
+        notificationEvents.push(...changed.notificationEvents);
       }
+    }
+
+    if (notificationEvents.length > 0) {
+      await notificationsService.publishCreatedActivityEvents(notificationEvents);
     }
 
     if (expiredUsers > 0) {

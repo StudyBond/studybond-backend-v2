@@ -1,6 +1,6 @@
 // All database operations use atomic transactions to avoid race conditions
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database";
 import { bookmarksService } from "../bookmarks/bookmarks.service";
 import { AppError } from "../../shared/errors/AppError";
@@ -43,7 +43,10 @@ import {
   buildExamDisplayNames,
   buildScopeKeyFromExamType,
 } from "../../shared/utils/examNaming";
-import { normalizeSubjectLabel, getSubjectSearchVariants } from "../../shared/utils/subjects";
+import {
+  normalizeSubjectLabel,
+  getSubjectSearchVariants,
+} from "../../shared/utils/subjects";
 import {
   buildRouteKey,
   idempotencyService,
@@ -57,7 +60,8 @@ import {
   institutionExamConfigService,
   type InstitutionExamRuntimeConfig,
 } from "../../shared/institutions/exam-config";
-import { finalizeCollaborationSubmission } from '../collaboration/collaboration-completion';
+import { finalizeCollaborationSubmission } from "../collaboration/collaboration-completion";
+import { notificationsService } from "../notifications/notifications.service";
 
 export class ExamsService {
   private static readonly EXAM_HISTORY_CACHE_TTL_SECONDS = Number.parseInt(
@@ -256,6 +260,17 @@ export class ExamsService {
     userId: number,
     scopeKey: string,
   ): Promise<number> {
+    const existingMax = await tx.exam.aggregate({
+      where: {
+        userId,
+        nameScopeKey: scopeKey,
+      },
+      _max: {
+        sessionNumber: true,
+      },
+    });
+    const maxSessionNumber = existingMax._max.sessionNumber ?? 0;
+
     const counter = await tx.examSessionCounter.upsert({
       where: {
         userId_scopeKey: {
@@ -266,7 +281,7 @@ export class ExamsService {
       create: {
         userId,
         scopeKey,
-        currentValue: 1,
+        currentValue: maxSessionNumber + 1,
       },
       update: {
         currentValue: { increment: 1 },
@@ -276,10 +291,27 @@ export class ExamsService {
       },
     });
 
+    if (counter.currentValue <= maxSessionNumber) {
+      const repairedCounter = await tx.examSessionCounter.update({
+        where: {
+          userId_scopeKey: {
+            userId,
+            scopeKey,
+          },
+        },
+        data: {
+          currentValue: maxSessionNumber + 1,
+        },
+        select: {
+          currentValue: true,
+        },
+      });
+
+      return repairedCounter.currentValue;
+    }
+
     return counter.currentValue;
   }
-
-
 
   private resolveSoloExamType(
     input: StartExamInput,
@@ -611,10 +643,7 @@ export class ExamsService {
     );
 
     const startedAt = new Date();
-    const expiresAt = this.calculateExamExpiresAt(
-      startedAt,
-      durationSeconds,
-    );
+    const expiresAt = this.calculateExamExpiresAt(startedAt, durationSeconds);
 
     // Create exam in transaction (atomically track free credits)
     let exam;
@@ -799,7 +828,8 @@ export class ExamsService {
 
     let globalPool = await getJson<Record<string, number>>(cacheKey);
 
-    const hasAllSubjects = globalPool && SUBJECTS.every(s => globalPool![s] !== undefined);
+    const hasAllSubjects =
+      globalPool && SUBJECTS.every((s) => globalPool![s] !== undefined);
 
     if (!globalPool || !hasAllSubjects) {
       globalPool = globalPool || {};
@@ -810,11 +840,11 @@ export class ExamsService {
           const questions = await prisma.question.findMany({
             where: {
               subject: { in: variants },
-              questionType: { in: ['real_past_question', 'practice'] }
+              questionType: { in: ["real_past_question", "practice"] },
             },
-            select: { id: true }
+            select: { id: true },
           });
-          
+
           if (questions.length > 0) {
             const randomIndex = Math.floor(Math.random() * questions.length);
             globalPool[subject] = questions[randomIndex].id;
@@ -855,7 +885,9 @@ export class ExamsService {
       },
     });
 
-    const foundQuestionIds = new Set(rawQuestions.map((question: any) => question.id));
+    const foundQuestionIds = new Set(
+      rawQuestions.map((question: any) => question.id),
+    );
     const staleSubjects = selectedQuestionIds
       .filter((entry) => !foundQuestionIds.has(entry.questionId))
       .map((entry) => entry.subject);
@@ -1198,6 +1230,12 @@ export class ExamsService {
         return { userStats, collaborationRealtime };
       });
 
+      if (result.userStats.notificationEvents.length > 0) {
+        await notificationsService.publishCreatedActivityEvents(
+          result.userStats.notificationEvents,
+        );
+      }
+
       // Build response with full question details
       const questionsWithAnswers: QuestionWithAnswer[] = exam.examAnswers.map(
         (ea: any) => {
@@ -1267,8 +1305,14 @@ export class ExamsService {
       // Invalidate leaderboard cache if SP was earned to ensure immediate visibility
       if (scoring.spEarned > 0 && exam.institutionId) {
         try {
-          await this.leaderboardService.deleteCache(exam.institutionId, "WEEKLY");
-          await this.leaderboardService.deleteCache(exam.institutionId, "ALL_TIME");
+          await this.leaderboardService.deleteCache(
+            exam.institutionId,
+            "WEEKLY",
+          );
+          await this.leaderboardService.deleteCache(
+            exam.institutionId,
+            "ALL_TIME",
+          );
         } catch {
           // Non-blocking
         }
@@ -1287,19 +1331,30 @@ export class ExamsService {
           });
       }
 
-      if (exam.collaborationSessionId && result.collaborationRealtime && this.app?.collaborationService) {
+      if (
+        exam.collaborationSessionId &&
+        result.collaborationRealtime &&
+        this.app?.collaborationService
+      ) {
         try {
-          await this.app.collaborationService.publishParticipantFinishedRealtime({
-            sessionId: exam.collaborationSessionId,
-            userId,
-            examId: exam.id,
-            finishedAt: now.toISOString(),
-            result: result.collaborationRealtime
-          });
+          await this.app.collaborationService.publishParticipantFinishedRealtime(
+            {
+              sessionId: exam.collaborationSessionId,
+              userId,
+              examId: exam.id,
+              finishedAt: now.toISOString(),
+              result: result.collaborationRealtime,
+            },
+          );
         } catch (error) {
           this.app.log.warn(
-            { error, sessionId: exam.collaborationSessionId, userId, examId: exam.id },
-            'Failed to publish collaboration submit realtime events after exam submission'
+            {
+              error,
+              sessionId: exam.collaborationSessionId,
+              userId,
+              examId: exam.id,
+            },
+            "Failed to publish collaboration submit realtime events after exam submission",
           );
         }
       }
@@ -1964,62 +2019,5 @@ export class ExamsService {
       status: updatedExam.status,
       message: "Exam abandoned successfully",
     };
-  }
-  /* Report an anti-cheat violation.
-   *
-   * Designed for zero-latency: no blocking DB calls on the hot path.
-   *
-   * 1. Redis rate-limit (1 per exam per 10s) prevents DB spam.
-   * 2. No exam ownership check — route is already authenticated via
-   *    `preValidation: [app.authenticate]`, and the userId is embedded
-   *    in the audit log so there is no integrity risk.
-   * 3. Audit log write is fire-and-forget (non-blocking).
-   */
-  async reportViolation(
-    userId: number,
-    examId: number,
-    payload: { violationType: string; metadata?: any },
-  ) {
-    // ── Rate-limit: max 1 violation per exam per 10 seconds ──
-    const cache = getCacheAdapter();
-    if (cache.available) {
-      const rateKey = `exam:violation:rate:${examId}:${userId}`;
-      try {
-        const count = await cache.incr(rateKey);
-        if (count === 1) {
-          await cache.expire(rateKey, 10);
-        }
-        if (count > 1) {
-          // Duplicate within window — silently acknowledge without DB write
-          return { recorded: true };
-        }
-      } catch {
-        // Redis failure must not block violation recording
-      }
-    }
-
-    // ── Fire-and-forget audit log write ──
-    prisma.auditLog
-      .create({
-        data: {
-          userId,
-          action: "EXAM_CHEAT_VIOLATION" as any,
-          metadata: {
-            examId,
-            violationType: payload.violationType,
-            violationCount: payload.metadata?.count ?? 1,
-            timestamp: new Date().toISOString(),
-            ...payload.metadata,
-          },
-        },
-      })
-      .catch((err: unknown) => {
-        console.warn(
-          "[ExamViolation] Failed to write audit log:",
-          (err as Error).message,
-        );
-      });
-
-    return { recorded: true };
   }
 }

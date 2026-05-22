@@ -135,15 +135,9 @@ export const historyQuerySchema = z.object({
 
 // TYPE EXPORTS (inferred from schemas)
 
-export const reportViolationSchema = z.object({
-    violationType: z.enum(['tab_switch', 'screenshot', 'copy_paste', 'right_click', 'devtools']),
-    metadata: z.record(z.string(), z.any()).optional()
-}).strict();
-
 export type StartExamInput = z.infer<typeof startExamSchema>;
 export type StartDailyChallengeInput = z.infer<typeof startDailyChallengeSchema>;
 export type AnswerInput = z.infer<typeof answerSchema>;
 export type SubmitExamInput = z.infer<typeof submitExamSchema>;
 export type ExamIdParam = z.infer<typeof examIdParamSchema>;
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
-export type ReportViolationInput = z.infer<typeof reportViolationSchema>;
