@@ -9,9 +9,11 @@ import { runNotificationMaintenance } from './notification-maintenance';
 import { runPasswordChangeAlertCheck } from './password-change-alerts';
 import { runSubscriptionExpiryCheck } from './subscription-check';
 import { runSubscriptionAlerts } from './subscription-expiry-alerts';
+import { runWeeklyLeaderboardReset } from './weekly-reset';
 
 const JOBS_ENABLED = process.env.JOBS_ENABLED === 'true';
 const JOBS_TIMEZONE = process.env.JOBS_TIMEZONE || 'Africa/Lagos';
+const LEADERBOARD_WEEKLY_RESET_CRON = process.env.LEADERBOARD_WEEKLY_RESET_CRON || '59 23 * * 0';
 
 export function setupBackgroundJobs(app: FastifyInstance): void {
   if (!JOBS_ENABLED) {
@@ -91,6 +93,13 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     timezone: JOBS_TIMEZONE
   });
 
+  const weeklyLeaderboardResetTask = cron.schedule(LEADERBOARD_WEEKLY_RESET_CRON, async () => {
+    app.log.info('Running weekly leaderboard reset job.');
+    await runWeeklyLeaderboardReset(app);
+  }, {
+    timezone: JOBS_TIMEZONE
+  });
+
   app.addHook('onClose', async () => {
     subscriptionExpiryTask.stop();
     passwordChangeAlertTask.stop();
@@ -101,6 +110,7 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     marketingCampaignTask.stop();
     subscriptionAlertTask.stop();
     notificationMaintenanceTask.stop();
+    weeklyLeaderboardResetTask.stop();
   });
 
   app.log.info({ timezone: JOBS_TIMEZONE }, 'Background jobs scheduled.');
