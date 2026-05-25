@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import fastifyRateLimit from '@fastify/rate-limit';
+import { createResilientRateLimitStore } from './resilient-rate-limit-store';
 
 async function rateLimitPlugin(app: FastifyInstance) {
   const options: any = {
@@ -17,9 +18,10 @@ async function rateLimitPlugin(app: FastifyInstance) {
   };
 
   if (app.cache?.available && app.cache.client) {
-    options.redis = app.cache.client;
-    options.nameSpace = process.env.RATE_LIMIT_NAMESPACE || 'studybond:rate-limit';
-    app.log.info('Rate limit is using Redis backend.');
+    const namespace = process.env.RATE_LIMIT_NAMESPACE || 'studybond:rate-limit:';
+    options.store = createResilientRateLimitStore(app.cache.client, namespace, app.log);
+    options.skipOnError = true;
+    app.log.info('Rate limit is using Redis backend with local fallback.');
   } else {
     app.log.warn('Rate limit is using local memory backend. Use Redis in production.');
   }

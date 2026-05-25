@@ -19,24 +19,40 @@ async function redisPlugin(app: FastifyInstance) {
   }
 
   const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+  let redisAvailable = false;
+  const markAvailable = () => {
+    redisAvailable = true;
+    if (app.cache) app.cache.available = true;
+  };
+  const markUnavailable = () => {
+    redisAvailable = false;
+    if (app.cache) app.cache.available = false;
+  };
   const client = new RedisCtor(redisUrl, {
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
-    retryStrategy: () => null,
-    reconnectOnError: () => false,
+    retryStrategy: (times: number) => Math.min(1000 * times, 10000),
+    reconnectOnError: (error: Error) => /READONLY|ETIMEDOUT|ECONNRESET|Connection is closed/i.test(error.message),
     connectTimeout: Number.parseInt(process.env.REDIS_CONNECT_TIMEOUT_MS || '1500', 10),
+    commandTimeout: Number.parseInt(process.env.REDIS_COMMAND_TIMEOUT_MS || '1500', 10),
     lazyConnect: true
   });
   client.on('error', (error: any) => {
     app.log.debug({ error }, 'Redis client error');
   });
+  client.on('ready', markAvailable);
+  client.on('close', markUnavailable);
+  client.on('end', markUnavailable);
+  client.on('reconnecting', markUnavailable);
 
   try {
     if (typeof client.connect === 'function') {
       await client.connect();
     }
     await client.ping();
+    markAvailable();
   } catch (error) {
+    markUnavailable();
     app.log.error({ error }, 'Redis connection failed. Continuing without Redis.');
     try {
       await client.quit();
@@ -47,7 +63,9 @@ async function redisPlugin(app: FastifyInstance) {
   }
 
   const adapter: CacheAdapter = {
-    available: true,
+    get available() {
+      return redisAvailable;
+    },
     async get(key: string) {
       return client.get(key);
     },
