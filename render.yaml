@@ -1,0 +1,69 @@
+# StudyBond backend deployment blueprint.
+# Add secrets and provider URLs manually to the shared Render env group
+# `studybond-backend-production` before the first production deploy.
+
+services:
+  - type: web
+    name: studybond-backend-api
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: studybond-backend-v2
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - fromGroup: studybond-backend-production
+      - key: JOBS_ENABLED
+        value: "false"
+
+  - type: worker
+    name: studybond-backend-jobs
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: studybond-backend-v2
+    buildCommand: npm install && npm run build
+    startCommand: npm run worker:jobs:prod
+    autoDeployTrigger: commit
+    envVars:
+      - fromGroup: studybond-backend-production
+      - key: JOBS_ENABLED
+        value: "true"
+
+  - type: worker
+    name: studybond-backend-leaderboard
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: studybond-backend-v2
+    buildCommand: npm install && npm run build
+    startCommand: npm run worker:leaderboard:prod
+    autoDeployTrigger: commit
+    envVars:
+      - fromGroup: studybond-backend-production
+      - key: JOBS_ENABLED
+        value: "false"
+
+envVarGroups:
+  - name: studybond-backend-production
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: REDIS_ENABLED
+        value: "true"
+      - key: REDIS_CONNECT_TIMEOUT_MS
+        value: "1500"
+      - key: JOBS_TIMEZONE
+        value: Africa/Lagos
+      - key: SWAGGER_ENABLED
+        value: "false"
+      - key: LEADERBOARD_PROJECTION_ENABLED
+        value: "true"
+      - key: LEADERBOARD_REDIS_READ_ENABLED
+        value: "true"
+      - key: LAUNCH_INSTITUTION_CODE
+        value: UI
