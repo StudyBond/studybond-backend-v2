@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const isoDateTimeSchema = z.string().datetime();
+export const isoDateTimeSchema = z.iso.datetime();
 
 export const opaqueObjectSchema = z.object({}).passthrough();
 
