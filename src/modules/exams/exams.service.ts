@@ -1072,7 +1072,11 @@ export class ExamsService {
       });
 
       if (!exam) {
-        throw new AppError("Exam not found", 404);
+        throw new AppError(
+          "Exam not found",
+          404,
+          EXAM_ERROR_CODES.EXAM_NOT_FOUND
+        );
       }
 
       if (exam.status !== EXAM_STATUS.IN_PROGRESS) {
@@ -1081,6 +1085,9 @@ export class ExamsService {
             ? "Exam has already been submitted"
             : "Exam has been abandoned",
           400,
+          exam.status === EXAM_STATUS.COMPLETED
+            ? EXAM_ERROR_CODES.EXAM_ALREADY_COMPLETED
+            : EXAM_ERROR_CODES.EXAM_NOT_IN_PROGRESS,
         );
       }
 
@@ -1094,7 +1101,11 @@ export class ExamsService {
       );
 
       if (now > expiresAt) {
-        throw new AppError("Exam time has expired", 400);
+        throw new AppError(
+          "Exam time has expired",
+          400,
+          EXAM_ERROR_CODES.EXAM_EXPIRED
+        );
       }
 
       // Map submitted answers to question IDs
@@ -1408,11 +1419,19 @@ export class ExamsService {
     });
 
     if (!exam) {
-      throw new AppError("Exam not found", 404);
+      throw new AppError(
+        "Exam not found",
+        404,
+        EXAM_ERROR_CODES.EXAM_NOT_FOUND,
+      );
     }
 
     if (exam.status !== EXAM_STATUS.IN_PROGRESS) {
-      throw new AppError("Exam is not in progress", 400);
+      throw new AppError(
+        "Exam is not in progress",
+        400,
+        EXAM_ERROR_CODES.EXAM_NOT_IN_PROGRESS,
+      );
     }
 
     const durationSeconds = await this.getConfiguredExamDurationSeconds(exam);
@@ -1429,7 +1448,11 @@ export class ExamsService {
         where: { id: examId },
         data: { status: EXAM_STATUS.ABANDONED as any },
       });
-      throw new AppError("Exam time has expired", 400);
+      throw new AppError(
+        "Exam time has expired",
+        400,
+        EXAM_ERROR_CODES.EXAM_EXPIRED,
+      );
     }
 
     const questionsForClient: QuestionForClient[] = exam.examAnswers.map(
@@ -1674,11 +1697,19 @@ export class ExamsService {
     });
 
     if (!exam) {
-      throw new AppError("Exam not found", 404);
+      throw new AppError(
+        "Exam not found",
+        404,
+        EXAM_ERROR_CODES.EXAM_NOT_FOUND,
+      );
     }
 
     if (exam.status !== EXAM_STATUS.COMPLETED) {
-      throw new AppError("Exam is not completed yet", 400);
+      throw new AppError(
+        "Exam is not completed yet",
+        400,
+        "EXAM_NOT_COMPLETED",
+      );
     }
 
     // Get user stats
@@ -1823,7 +1854,11 @@ export class ExamsService {
     });
 
     if (!originalExam) {
-      throw new AppError("Original exam not found", 404);
+      throw new AppError(
+        "Original exam not found",
+        404,
+        EXAM_ERROR_CODES.EXAM_NOT_FOUND,
+      );
     }
 
     // Allow retakes for non-premium users only for the free full real UI exam.
@@ -1997,11 +2032,19 @@ export class ExamsService {
     });
 
     if (!exam) {
-      throw new AppError("Exam not found", 404);
+      throw new AppError(
+        "Exam not found",
+        404,
+        EXAM_ERROR_CODES.EXAM_NOT_FOUND,
+      );
     }
 
     if (exam.status !== EXAM_STATUS.IN_PROGRESS) {
-      throw new AppError("Can only abandon in-progress exams", 400);
+      throw new AppError(
+        "Can only abandon in-progress exams",
+        400,
+        EXAM_ERROR_CODES.EXAM_NOT_IN_PROGRESS,
+      );
     }
 
     const updatedExam = await prisma.exam.update({

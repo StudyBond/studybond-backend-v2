@@ -111,6 +111,74 @@ const ERROR_MAP: Record<string, { message: string; hint?: string }> = {
     message: "Your exam is currently being submitted.",
     hint: "Please wait a few seconds and avoid tapping submit repeatedly.",
   },
+  EXAM_ALREADY_COMPLETED: {
+    message: "This exam has already been submitted.",
+    hint: "Check your exam history or start a new exam if you'd like to try again.",
+  },
+  EXAM_NOT_FOUND: {
+    message: "The exam could not be found.",
+    hint: "The exam may have expired or been deleted. Start a new exam to continue.",
+  },
+  EXAM_NOT_IN_PROGRESS: {
+    message: "This exam is not currently in progress.",
+    hint: "Start a new exam or check your exam history.",
+  },
+  EXAM_EXPIRED: {
+    message: "Your exam time has expired.",
+    hint: "Any answers submitted before time ran out are saved. Start a new exam to try again.",
+  },
+  EXAM_NOT_COMPLETED: {
+    message: "This exam has not been completed yet.",
+    hint: "Complete the exam first to view your results.",
+  },
+  EXAM_FREE_LIMIT_REACHED: {
+    message: "You have reached your free exam limit for today.",
+    hint: "Upgrade to premium for unlimited exams or try again tomorrow.",
+  },
+  EXAM_FREE_SUBJECT_ALREADY_TAKEN: {
+    message: "You have already taken your free exam for this subject today.",
+    hint: "Upgrade to premium to take more exams on this subject today.",
+  },
+  EXAM_PREMIUM_REQUIRED: {
+    message: "This exam type requires a premium subscription.",
+    hint: "Upgrade to premium to access this exam.",
+  },
+  EXAM_DAILY_LIMIT_REACHED: {
+    message: "You have reached your daily exam limit.",
+    hint: "Try again tomorrow or contact support for more information.",
+  },
+  EXAM_COLLAB_GATE_NOT_MET: {
+    message: "You do not meet the requirements for collaborative exams yet.",
+    hint: "Complete more practice exams to unlock duel challenges.",
+  },
+  EXAM_MAX_RETAKES_REACHED: {
+    message: "You have already used all your retakes for this exam.",
+    hint: "Try a different exam or wait for new questions to be available.",
+  },
+  EXAM_ORIGINAL_NOT_COMPLETED: {
+    message: "You must complete the original exam before retaking it.",
+    hint: "Go back and finish the original exam first.",
+  },
+  EXAM_INSUFFICIENT_QUESTIONS: {
+    message: "Not enough questions available for this exam configuration.",
+    hint: "Try a different subject combination or contact support.",
+  },
+  EXAM_INVALID_SUBJECT: {
+    message: "One or more selected subjects are not available.",
+    hint: "Check your subject selection and try again.",
+  },
+  EXAM_INVALID_ANSWER_FORMAT: {
+    message: "Your exam answers are not in the correct format.",
+    hint: "Make sure all answers are properly formatted before submitting.",
+  },
+  EXAM_DUPLICATE_ANSWERS: {
+    message: "Some answers were submitted more than once.",
+    hint: "Review your answers and submit with each question answered only once.",
+  },
+  EXAM_QUESTION_NOT_IN_EXAM: {
+    message: "One of the submitted answers does not belong to this exam.",
+    hint: "Check that you are submitting answers for the correct exam.",
+  },
   IDEMPOTENCY_KEY_REQUIRED: {
     message: "This request needs an Idempotency-Key header.",
     hint: "Send a unique key so retries stay safe and consistent.",
