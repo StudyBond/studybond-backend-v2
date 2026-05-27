@@ -298,46 +298,83 @@ export class ExamsService {
     });
     const maxSessionNumber = existingMax._max.sessionNumber ?? 0;
 
-    const counter = await tx.examSessionCounter.upsert({
-      where: {
-        userId_scopeKey: {
-          userId,
-          scopeKey,
-        },
-      },
-      create: {
-        userId,
-        scopeKey,
-        currentValue: maxSessionNumber + 1,
-      },
-      update: {
-        currentValue: { increment: 1 },
-      },
-      select: {
-        currentValue: true,
-      },
-    });
-
-    if (counter.currentValue <= maxSessionNumber) {
-      const repairedCounter = await tx.examSessionCounter.update({
+    // The ExamSessionCounter upsert is not atomic with the pg adapter —
+    // it's emulated as SELECT + INSERT/UPDATE which races under concurrency.
+    // We wrap it in a try-catch so a P2002 here doesn't blow up the entire
+    // transaction. If the upsert fails, we fall back to the aggregate value.
+    let counterValue: number;
+    try {
+      const counter = await tx.examSessionCounter.upsert({
         where: {
           userId_scopeKey: {
             userId,
             scopeKey,
           },
         },
-        data: {
+        create: {
+          userId,
+          scopeKey,
           currentValue: maxSessionNumber + 1,
+        },
+        update: {
+          currentValue: { increment: 1 },
         },
         select: {
           currentValue: true,
         },
       });
-
-      return repairedCounter.currentValue;
+      counterValue = counter.currentValue;
+    } catch (upsertError: any) {
+      if (upsertError?.code === "P2002") {
+        // The row already exists but the emulated upsert's SELECT missed it.
+        // Fall back to a direct update.
+        try {
+          const updated = await tx.examSessionCounter.update({
+            where: {
+              userId_scopeKey: { userId, scopeKey },
+            },
+            data: {
+              currentValue: maxSessionNumber + 1,
+            },
+            select: { currentValue: true },
+          });
+          counterValue = updated.currentValue;
+        } catch {
+          // Counter update also failed — fall back to aggregate-only numbering.
+          counterValue = maxSessionNumber + 1;
+        }
+      } else {
+        // Non-P2002 error — fall back to aggregate-only numbering so the
+        // transaction can still proceed.
+        counterValue = maxSessionNumber + 1;
+      }
     }
 
-    return counter.currentValue;
+    if (counterValue <= maxSessionNumber) {
+      // Counter drifted behind the actual max — repair it.
+      try {
+        const repairedCounter = await tx.examSessionCounter.update({
+          where: {
+            userId_scopeKey: {
+              userId,
+              scopeKey,
+            },
+          },
+          data: {
+            currentValue: maxSessionNumber + 1,
+          },
+          select: {
+            currentValue: true,
+          },
+        });
+        return repairedCounter.currentValue;
+      } catch {
+        // Repair failed — fall back to aggregate value.
+        return maxSessionNumber + 1;
+      }
+    }
+
+    return counterValue;
   }
 
   private resolveSoloExamType(
@@ -963,48 +1000,67 @@ export class ExamsService {
     const expiresAt = this.calculateExamExpiresAt(startedAt, durationSeconds);
 
     let exam;
-    try {
-      // Transaction to save Exam and ExamAnswer rows
-      exam = await prisma.$transaction(async (tx: any) => {
-        const sessionNumber = await this.nextExamSessionNumber(
-          tx,
-          userId,
-          scopeKey,
-        );
+    const MAX_TX_RETRIES = 3;
+    let lastTxError: any = null;
 
-        const newExam = await tx.exam.create({
-          data: {
+    for (let attempt = 0; attempt < MAX_TX_RETRIES; attempt++) {
+      try {
+        // Transaction to save Exam and ExamAnswer rows
+        exam = await prisma.$transaction(async (tx: any) => {
+          const sessionNumber = await this.nextExamSessionNumber(
+            tx,
             userId,
-            institutionId: null,
-            examType: EXAM_TYPES.DAILY_CHALLENGE as any,
-            nameScopeKey: scopeKey,
-            sessionNumber,
-            subjectsIncluded: input.subjects,
-            totalQuestions: questions.length,
-            score: 0,
-            percentage: 0,
-            spEarned: 0,
-            status: EXAM_STATUS.IN_PROGRESS as any,
-            startedAt,
-            isRetake: false,
-            attemptNumber: 1,
-            maxRetakes: 0, // No retakes for daily challenges
-          },
+            scopeKey,
+          );
+
+          const newExam = await tx.exam.create({
+            data: {
+              userId,
+              institutionId: null,
+              examType: EXAM_TYPES.DAILY_CHALLENGE as any,
+              nameScopeKey: scopeKey,
+              sessionNumber,
+              subjectsIncluded: input.subjects,
+              totalQuestions: questions.length,
+              score: 0,
+              percentage: 0,
+              spEarned: 0,
+              status: EXAM_STATUS.IN_PROGRESS as any,
+              startedAt,
+              isRetake: false,
+              attemptNumber: 1,
+              maxRetakes: 0, // No retakes for daily challenges
+            },
+          });
+
+          const answerRecords = questions.map((q) => ({
+            examId: newExam.id,
+            questionId: q.id,
+            userAnswer: null,
+            isCorrect: false,
+            timeSpentSeconds: 0,
+          }));
+
+          await tx.examAnswer.createMany({ data: answerRecords });
+          return newExam;
         });
+        lastTxError = null;
+        break; // Transaction succeeded — exit retry loop
+      } catch (error: any) {
+        lastTxError = error;
+        if (error?.code === "P2002" && attempt < MAX_TX_RETRIES - 1) {
+          // Retryable — the pg adapter's emulated upsert or a session number
+          // collision caused P2002. Retrying will re-read the aggregate and
+          // pick a fresh session number.
+          continue;
+        }
+        // Non-retryable or final attempt — break out and handle below
+        break;
+      }
+    }
 
-        const answerRecords = questions.map((q) => ({
-          examId: newExam.id,
-          questionId: q.id,
-          userAnswer: null,
-          isCorrect: false,
-          timeSpentSeconds: 0,
-        }));
-
-        await tx.examAnswer.createMany({ data: answerRecords });
-        return newExam;
-      });
-    } catch (error: any) {
-      if (error?.code === "P2002") {
+    if (lastTxError) {
+      if (lastTxError?.code === "P2002") {
         const resumedAfterConflict = await this.reuseOrExpireInProgressExam(
           userId,
           null,
@@ -1031,8 +1087,8 @@ export class ExamsService {
 
         // Recovery failed — wrap raw Prisma error so it doesn't surface as 500
         this.app?.log?.error(
-          { userId, scopeKey, prismaCode: error?.code },
-          "P2002 recovery failed in startDailyChallenge",
+          { userId, scopeKey, prismaCode: lastTxError?.code },
+          "P2002 recovery failed in startDailyChallenge after retries",
         );
         throw new AppError(
           "A session conflict occurred. Please try again.",
@@ -1040,17 +1096,17 @@ export class ExamsService {
         );
       }
       // Wrap any unexpected DB error with a proper status code
-      if (!error?.statusCode) {
+      if (!lastTxError?.statusCode) {
         this.app?.log?.error(
-          { userId, scopeKey, error: error?.message, code: error?.code },
+          { userId, scopeKey, error: lastTxError?.message, code: lastTxError?.code },
           "Unexpected error in startDailyChallenge transaction",
         );
         throw new AppError(
-          error?.message || "Failed to start daily challenge. Please try again.",
+          lastTxError?.message || "Failed to start daily challenge. Please try again.",
           500,
         );
       }
-      throw error;
+      throw lastTxError;
     }
 
     const naming = buildExamDisplayNames(
