@@ -179,7 +179,34 @@ export class ExamsService {
       return null;
     }
 
-    return this.getExamQuestions(userId, existingExam.id);
+    // Self-heal: if the in-progress exam has corrupted data (e.g. deleted
+    // questions), force-abandon it so the user is not permanently blocked.
+    try {
+      return await this.getExamQuestions(userId, existingExam.id);
+    } catch (resumeError: any) {
+      this.app?.log?.error(
+        {
+          examId: existingExam.id,
+          userId,
+          error: resumeError?.message,
+          code: resumeError?.code,
+        },
+        "Self-healing: force-abandoning corrupted in-progress exam",
+      );
+      try {
+        await prisma.exam.update({
+          where: { id: existingExam.id },
+          data: {
+            status: EXAM_STATUS.ABANDONED as any,
+            completedAt: new Date(),
+          },
+        });
+        await this.bumpExamHistoryVersion(userId);
+      } catch {
+        // Cleanup failure must not block the start flow.
+      }
+      return null;
+    }
   }
 
   private async enforceStartRateLimit(userId: number): Promise<void> {
@@ -714,6 +741,27 @@ export class ExamsService {
         if (resumedAfterConflict) {
           return resumedAfterConflict;
         }
+
+        // Recovery failed — wrap raw Prisma error so it doesn't surface as 500
+        this.app?.log?.error(
+          { userId, scopeKey, prismaCode: error?.code },
+          "P2002 recovery failed in startExam",
+        );
+        throw new AppError(
+          "A session conflict occurred. Please try again.",
+          409,
+        );
+      }
+      // Wrap any unexpected DB error with a proper status code
+      if (!error?.statusCode) {
+        this.app?.log?.error(
+          { userId, scopeKey, error: error?.message, code: error?.code },
+          "Unexpected error in startExam transaction",
+        );
+        throw new AppError(
+          error?.message || "Failed to start exam. Please try again.",
+          500,
+        );
       }
       throw error;
     }
@@ -980,6 +1028,27 @@ export class ExamsService {
             403,
           );
         }
+
+        // Recovery failed — wrap raw Prisma error so it doesn't surface as 500
+        this.app?.log?.error(
+          { userId, scopeKey, prismaCode: error?.code },
+          "P2002 recovery failed in startDailyChallenge",
+        );
+        throw new AppError(
+          "A session conflict occurred. Please try again.",
+          409,
+        );
+      }
+      // Wrap any unexpected DB error with a proper status code
+      if (!error?.statusCode) {
+        this.app?.log?.error(
+          { userId, scopeKey, error: error?.message, code: error?.code },
+          "Unexpected error in startDailyChallenge transaction",
+        );
+        throw new AppError(
+          error?.message || "Failed to start daily challenge. Please try again.",
+          500,
+        );
       }
       throw error;
     }
