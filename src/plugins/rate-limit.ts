@@ -14,11 +14,11 @@ async function rateLimitPlugin(app: FastifyInstance) {
       if ((request as any).bypass_rate_limit === true) {
         return true;
       }
-      
+
       // Skip rate limiting for system endpoints (health checks, metrics, etc.)
       const url = request.url || request.originalUrl || "";
       const pathname = url.split("?")[0];
-      
+
       const criticalEndpoints = [
         "/health",
         "/",
@@ -26,7 +26,7 @@ async function rateLimitPlugin(app: FastifyInstance) {
         "/api/docs",
         "/api/openapi.json",
       ];
-      
+
       return criticalEndpoints.includes(pathname);
     },
     errorResponseBuilder: (_req: any, context: any) => ({
