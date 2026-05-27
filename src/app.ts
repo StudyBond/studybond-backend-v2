@@ -50,6 +50,16 @@ export async function buildApp(): Promise<FastifyInstance> {
     // Set Validator and Serializer for Zod
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
+    
+    // Mark health and system endpoints to bypass rate limiting
+    app.addHook('onRequest', async (request, reply) => {
+        const pathname = request.url.split('?')[0];
+        const systemEndpoints = ['/health', '/', '/metrics', '/api/docs', '/api/openapi.json'];
+        if (systemEndpoints.includes(pathname)) {
+            (request as any).bypass_rate_limit = true;
+        }
+    });
+    
     app.addHook('onRequest', logRequest);
     app.addHook('onResponse', logResponse);
 

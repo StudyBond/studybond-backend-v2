@@ -10,9 +10,15 @@ async function rateLimitPlugin(app: FastifyInstance) {
     cache: 10000,
     allowList: ["127.0.0.1"],
     skip: (request: any) => {
+      // Skip if marked by beforeHandler
+      if ((request as any).bypass_rate_limit === true) {
+        return true;
+      }
+      
       // Skip rate limiting for system endpoints (health checks, metrics, etc.)
-      // These must NEVER be rate limited as they're used by load balancers & monitoring
-      const pathname = request.url?.split("?")[0] || ""; // Remove query params
+      const url = request.url || request.originalUrl || "";
+      const pathname = url.split("?")[0];
+      
       const criticalEndpoints = [
         "/health",
         "/",
@@ -20,7 +26,8 @@ async function rateLimitPlugin(app: FastifyInstance) {
         "/api/docs",
         "/api/openapi.json",
       ];
-      return criticalEndpoints.some((endpoint) => pathname === endpoint);
+      
+      return criticalEndpoints.includes(pathname);
     },
     errorResponseBuilder: (_req: any, context: any) => ({
       success: false,
