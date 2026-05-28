@@ -137,6 +137,38 @@ export class ExamsService {
     institutionId: number | null,
     scopeKey: string,
   ): Promise<ExamSessionResponse | null> {
+    // Step 1: Expire any IN_PROGRESS exams whose time window has elapsed.
+    // This uses updateMany so ALL expired exams are cleaned up — not just
+    // the first one found. Leftover IN_PROGRESS rows block new exam
+    // creation due to the partial unique index
+    // "Exam_userId_institutionId_nameScopeKey_in_progress_key".
+    const gracePeriod = EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS;
+    // Daily challenges = 3 min, max solo = 90 min.  Use a generous ceiling
+    // so we never accidentally expire a still-valid exam.
+    const maxDurationSeconds = EXAM_CONFIG.FULL_EXAM_DURATION_SECONDS + gracePeriod;
+    const cutoff = new Date(Date.now() - maxDurationSeconds * 1000);
+
+    const expireResult = await prisma.exam.updateMany({
+      where: {
+        userId,
+        institutionId,
+        nameScopeKey: scopeKey,
+        status: EXAM_STATUS.IN_PROGRESS as any,
+        isRetake: false,
+        isCollaboration: false,
+        startedAt: { lt: cutoff },
+      },
+      data: {
+        status: EXAM_STATUS.ABANDONED as any,
+        completedAt: new Date(),
+      },
+    });
+
+    if (expireResult.count > 0) {
+      await this.bumpExamHistoryVersion(userId);
+    }
+
+    // Step 2: Check if there's still a valid (non-expired) IN_PROGRESS exam.
     const existingExam = await prisma.exam.findFirst({
       where: {
         userId,
@@ -160,6 +192,7 @@ export class ExamsService {
       return null;
     }
 
+    // The exam is still within its time window — try to resume it.
     const durationSeconds =
       await this.getConfiguredExamDurationSeconds(existingExam);
     const expiresAt = this.calculateExamExpiresAt(
@@ -167,6 +200,7 @@ export class ExamsService {
       durationSeconds,
     );
 
+    // Double-check with exact duration (updateMany used a generous ceiling)
     if (new Date() > expiresAt) {
       await prisma.exam.update({
         where: { id: existingExam.id },
@@ -202,8 +236,11 @@ export class ExamsService {
           },
         });
         await this.bumpExamHistoryVersion(userId);
-      } catch {
-        // Cleanup failure must not block the start flow.
+      } catch (cleanupError: any) {
+        this.app?.log?.error(
+          { examId: existingExam.id, userId, error: cleanupError?.message },
+          "CRITICAL: Failed to abandon corrupted exam — partial unique index will block new exams",
+        );
       }
       return null;
     }
@@ -1018,6 +1055,18 @@ export class ExamsService {
         break; // Transaction succeeded — exit retry loop
       } catch (error: any) {
         lastTxError = error;
+        this.app?.log?.error(
+          {
+            userId,
+            scopeKey,
+            attempt,
+            errorCode: error?.code,
+            errorMessage: error?.message,
+            metaTarget: error?.meta?.target,
+            metaModelName: error?.meta?.modelName,
+          },
+          "Daily challenge transaction failed",
+        );
         if (error?.code === "P2002" && attempt < MAX_TX_RETRIES - 1) {
           // Retryable — the pg adapter's emulated upsert or a session number
           // collision caused P2002. Retrying will re-read the aggregate and
