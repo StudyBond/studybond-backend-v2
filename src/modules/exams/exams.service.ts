@@ -282,6 +282,23 @@ export class ExamsService {
     }
   }
 
+  /**
+   * Compute the next session number purely from the Exam table aggregate.
+   *
+   * WHY NOT USE ExamSessionCounter HERE?
+   * With the @prisma/adapter-pg driver, upsert is emulated as
+   * SELECT → INSERT/UPDATE. If the INSERT races (P2002), PostgreSQL
+   * **aborts the entire transaction** — catching the error in JS doesn't
+   * help because the DB connection's transaction state is "aborted".
+   * Every subsequent query in the same transaction will fail with
+   * "current transaction is aborted, commands ignored until end of
+   * transaction block".
+   *
+   * Instead we use a simple aggregate (MAX + 1). If two transactions
+   * pick the same number, the Exam's @@unique([userId, nameScopeKey,
+   * sessionNumber]) constraint fires P2002 on Exam.create, which the
+   * caller's retry loop handles by starting a fresh transaction.
+   */
   private async nextExamSessionNumber(
     tx: any,
     userId: number,
@@ -296,85 +313,35 @@ export class ExamsService {
         sessionNumber: true,
       },
     });
-    const maxSessionNumber = existingMax._max.sessionNumber ?? 0;
+    return (existingMax._max.sessionNumber ?? 0) + 1;
+  }
 
-    // The ExamSessionCounter upsert is not atomic with the pg adapter —
-    // it's emulated as SELECT + INSERT/UPDATE which races under concurrency.
-    // We wrap it in a try-catch so a P2002 here doesn't blow up the entire
-    // transaction. If the upsert fails, we fall back to the aggregate value.
-    let counterValue: number;
+  /**
+   * Best-effort counter sync — called OUTSIDE the transaction after success.
+   * Keeps ExamSessionCounter in sync for any features that read it directly.
+   */
+  private async syncExamSessionCounter(
+    userId: number,
+    scopeKey: string,
+    sessionNumber: number,
+  ): Promise<void> {
     try {
-      const counter = await tx.examSessionCounter.upsert({
+      await prisma.examSessionCounter.upsert({
         where: {
-          userId_scopeKey: {
-            userId,
-            scopeKey,
-          },
+          userId_scopeKey: { userId, scopeKey },
         },
         create: {
           userId,
           scopeKey,
-          currentValue: maxSessionNumber + 1,
+          currentValue: sessionNumber,
         },
         update: {
-          currentValue: { increment: 1 },
-        },
-        select: {
-          currentValue: true,
+          currentValue: sessionNumber,
         },
       });
-      counterValue = counter.currentValue;
-    } catch (upsertError: any) {
-      if (upsertError?.code === "P2002") {
-        // The row already exists but the emulated upsert's SELECT missed it.
-        // Fall back to a direct update.
-        try {
-          const updated = await tx.examSessionCounter.update({
-            where: {
-              userId_scopeKey: { userId, scopeKey },
-            },
-            data: {
-              currentValue: maxSessionNumber + 1,
-            },
-            select: { currentValue: true },
-          });
-          counterValue = updated.currentValue;
-        } catch {
-          // Counter update also failed — fall back to aggregate-only numbering.
-          counterValue = maxSessionNumber + 1;
-        }
-      } else {
-        // Non-P2002 error — fall back to aggregate-only numbering so the
-        // transaction can still proceed.
-        counterValue = maxSessionNumber + 1;
-      }
+    } catch {
+      // Best-effort — counter drift is self-correcting on next exam start.
     }
-
-    if (counterValue <= maxSessionNumber) {
-      // Counter drifted behind the actual max — repair it.
-      try {
-        const repairedCounter = await tx.examSessionCounter.update({
-          where: {
-            userId_scopeKey: {
-              userId,
-              scopeKey,
-            },
-          },
-          data: {
-            currentValue: maxSessionNumber + 1,
-          },
-          select: {
-            currentValue: true,
-          },
-        });
-        return repairedCounter.currentValue;
-      } catch {
-        // Repair failed — fall back to aggregate value.
-        return maxSessionNumber + 1;
-      }
-    }
-
-    return counterValue;
   }
 
   private resolveSoloExamType(
@@ -803,6 +770,9 @@ export class ExamsService {
       throw error;
     }
 
+    // Best-effort counter sync — outside the transaction so P2002 can't abort it
+    await this.syncExamSessionCounter(userId, scopeKey, exam.sessionNumber);
+
     const naming = buildExamDisplayNames(
       resolvedExamType,
       input.subjects,
@@ -1108,6 +1078,9 @@ export class ExamsService {
       }
       throw lastTxError;
     }
+
+    // Best-effort counter sync — outside the transaction so P2002 can't abort it
+    await this.syncExamSessionCounter(userId, scopeKey, exam.sessionNumber);
 
     const naming = buildExamDisplayNames(
       EXAM_TYPES.DAILY_CHALLENGE as any,
