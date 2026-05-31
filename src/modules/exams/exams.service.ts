@@ -1227,14 +1227,14 @@ export class ExamsService {
       }
 
       if (exam.status !== EXAM_STATUS.IN_PROGRESS) {
+        if (exam.status === EXAM_STATUS.COMPLETED) {
+          return this.getExamDetails(userId, examId);
+        }
+
         throw new AppError(
-          exam.status === EXAM_STATUS.COMPLETED
-            ? "Exam has already been submitted"
-            : "Exam has been abandoned",
+          "Exam has been abandoned",
           400,
-          exam.status === EXAM_STATUS.COMPLETED
-            ? EXAM_ERROR_CODES.EXAM_ALREADY_COMPLETED
-            : EXAM_ERROR_CODES.EXAM_NOT_IN_PROGRESS,
+          EXAM_ERROR_CODES.EXAM_NOT_IN_PROGRESS,
         );
       }
 
@@ -1303,95 +1303,116 @@ export class ExamsService {
       );
 
       // Finalize exam and score updates in a single transaction to avoid double-submit races.
-      const result = await prisma.$transaction(async (tx: any) => {
-        const finalizeExam = await tx.exam.updateMany({
-          where: {
-            id: examId,
+      let result: {
+        userStats: Awaited<ReturnType<typeof updateUserStats>>;
+        collaborationRealtime:
+          | Awaited<ReturnType<typeof finalizeCollaborationSubmission>>
+          | null;
+      };
+      try {
+        result = await prisma.$transaction(async (tx: any) => {
+          const finalizeExam = await tx.exam.updateMany({
+            where: {
+              id: examId,
+              userId,
+              status: EXAM_STATUS.IN_PROGRESS as any,
+            },
+            data: {
+              score: scoring.rawScore,
+              percentage: scoring.percentage,
+              spEarned: scoring.spEarned,
+              timeTakenSeconds: timeTaken,
+              status: EXAM_STATUS.COMPLETED as any,
+              completedAt: now,
+            },
+          });
+
+          if (finalizeExam.count !== 1) {
+            throw new AppError(
+              "Exam has already been submitted or is no longer active.",
+              409,
+              EXAM_ERROR_CODES.EXAM_ALREADY_COMPLETED,
+            );
+          }
+
+          const valuesClause = gradedAnswers
+            .map((_, index) => {
+              const base = index * 6;
+              return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+            })
+            .join(", ");
+
+          const params: Array<number | string | boolean | null | Date> = [];
+          for (const answer of gradedAnswers) {
+            params.push(
+              examId,
+              answer.questionId,
+              answer.userAnswer,
+              answer.isCorrect,
+              answer.timeSpentSeconds,
+              now,
+            );
+          }
+
+          await tx.$executeRawUnsafe(
+            `
+                  UPDATE "ExamAnswer" AS ea
+                  SET
+                      "userAnswer" = v."userAnswer"::text,
+                      "isCorrect" = v."isCorrect"::boolean,
+                      "timeSpentSeconds" = v."timeSpentSeconds"::integer,
+                      "answeredAt" = v."answeredAt"::timestamp
+                  FROM (VALUES ${valuesClause}) AS v("examId", "questionId", "userAnswer", "isCorrect", "timeSpentSeconds", "answeredAt")
+                  WHERE ea."examId" = v."examId"::integer AND ea."questionId" = v."questionId"::integer
+                  `,
+            ...params,
+          );
+
+          // Update user stats
+          const userStats = await updateUserStats(
+            tx,
             userId,
-            status: EXAM_STATUS.IN_PROGRESS as any,
-          },
-          data: {
-            score: scoring.rawScore,
-            percentage: scoring.percentage,
-            spEarned: scoring.spEarned,
-            timeTakenSeconds: timeTaken,
-            status: EXAM_STATUS.COMPLETED as any,
-            completedAt: now,
-          },
+            scoring.spEarned,
+            exam.examType,
+            exam.isCollaboration,
+            exam.institutionId,
+          );
+
+          // Update question statistics
+          await updateQuestionStats(tx, gradedAnswers);
+
+          const collaborationRealtime =
+            exam.isCollaboration && exam.collaborationSessionId
+              ? await finalizeCollaborationSubmission(tx, {
+                  sessionId: exam.collaborationSessionId,
+                  userId,
+                  finishedAt: now,
+                  score: scoring.rawScore,
+                  spEarned: scoring.spEarned,
+                })
+              : null;
+
+          return { userStats, collaborationRealtime };
         });
+      } catch (error: any) {
+        if (error?.code === EXAM_ERROR_CODES.EXAM_ALREADY_COMPLETED) {
+          return this.getExamDetails(userId, examId);
+        }
+        throw error;
+      }
 
-        if (finalizeExam.count !== 1) {
-          throw new AppError(
-            "Exam has already been submitted or is no longer active.",
-            409,
-            EXAM_ERROR_CODES.EXAM_ALREADY_COMPLETED,
+      const notificationEvents = result.userStats.notificationEvents ?? [];
+      if (notificationEvents.length > 0) {
+        try {
+          await notificationsService.publishCreatedActivityEvents(
+            notificationEvents,
+          );
+        } catch (error) {
+          this.app?.log?.warn(
+            { error, userId, examId },
+            "Failed to publish exam submission notifications after commit",
           );
         }
-
-        const valuesClause = gradedAnswers
-          .map((_, index) => {
-            const base = index * 6;
-            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
-          })
-          .join(", ");
-
-        const params: Array<number | string | boolean | null | Date> = [];
-        for (const answer of gradedAnswers) {
-          params.push(
-            examId,
-            answer.questionId,
-            answer.userAnswer,
-            answer.isCorrect,
-            answer.timeSpentSeconds,
-            now,
-          );
-        }
-
-        await tx.$executeRawUnsafe(
-          `
-                UPDATE "ExamAnswer" AS ea
-                SET
-                    "userAnswer" = v."userAnswer"::text,
-                    "isCorrect" = v."isCorrect"::boolean,
-                    "timeSpentSeconds" = v."timeSpentSeconds"::integer,
-                    "answeredAt" = v."answeredAt"::timestamp
-                FROM (VALUES ${valuesClause}) AS v("examId", "questionId", "userAnswer", "isCorrect", "timeSpentSeconds", "answeredAt")
-                WHERE ea."examId" = v."examId"::integer AND ea."questionId" = v."questionId"::integer
-                `,
-          ...params,
-        );
-
-        // Update user stats
-        const userStats = await updateUserStats(
-          tx,
-          userId,
-          scoring.spEarned,
-          exam.examType,
-          exam.isCollaboration,
-          exam.institutionId,
-        );
-
-        // Update question statistics
-        await updateQuestionStats(tx, gradedAnswers);
-
-        const collaborationRealtime =
-          exam.isCollaboration && exam.collaborationSessionId
-            ? await finalizeCollaborationSubmission(tx, {
-                sessionId: exam.collaborationSessionId,
-                userId,
-                finishedAt: now,
-                score: scoring.rawScore,
-                spEarned: scoring.spEarned,
-              })
-            : null;
-
-        return { userStats, collaborationRealtime };
-      });
-
-      if (result.userStats.notificationEvents.length > 0) {
-        await notificationsService.publishCreatedActivityEvents(
-          result.userStats.notificationEvents,
-        );
       }
 
       // Build response with full question details

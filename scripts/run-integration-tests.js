@@ -70,10 +70,81 @@ async function getMissingTables(connectionString) {
   return missing;
 }
 
-const integrationDatabaseUrl = process.env.INTEGRATION_DATABASE_URL || process.env.DATABASE_URL;
+function isTruthy(value) {
+  return String(value ?? '').trim().toLowerCase() === 'true';
+}
+
+function isLocalDatabaseUrl(connectionString) {
+  try {
+    const parsed = new URL(connectionString);
+    return ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function databaseIdentity(connectionString) {
+  try {
+    const parsed = new URL(connectionString);
+    return [
+      parsed.protocol,
+      parsed.hostname,
+      parsed.port || '',
+      parsed.pathname
+    ].join('|');
+  } catch {
+    return connectionString;
+  }
+}
+
+const allowDatabaseUrlFallback = isTruthy(process.env.INTEGRATION_ALLOW_DATABASE_URL_FALLBACK);
+const allowRemoteDatabaseUrlFallback = isTruthy(process.env.INTEGRATION_ALLOW_REMOTE_DATABASE_URL_FALLBACK);
+const allowSharedDatabaseUrl = isTruthy(process.env.INTEGRATION_ALLOW_SHARED_DATABASE_URL);
+const integrationDatabaseUrl = process.env.INTEGRATION_DATABASE_URL
+  || (allowDatabaseUrlFallback ? process.env.DATABASE_URL : undefined);
+
+if (!process.env.INTEGRATION_DATABASE_URL && process.env.DATABASE_URL && !allowDatabaseUrlFallback) {
+  console.error(
+    'Refusing to run integration tests against DATABASE_URL. ' +
+    'Set INTEGRATION_DATABASE_URL to a disposable test database. ' +
+    'For local-only fallback, set INTEGRATION_ALLOW_DATABASE_URL_FALLBACK=true.'
+  );
+  process.exit(1);
+}
+
+if (process.env.INTEGRATION_DATABASE_URL && !allowSharedDatabaseUrl) {
+  const integrationIdentity = databaseIdentity(process.env.INTEGRATION_DATABASE_URL);
+  const productionIdentities = [
+    process.env.DATABASE_URL,
+    process.env.DIRECT_URL
+  ]
+    .filter(Boolean)
+    .map(databaseIdentity);
+
+  if (productionIdentities.includes(integrationIdentity)) {
+    console.error(
+      'Refusing to run integration tests because INTEGRATION_DATABASE_URL points at the same database as DATABASE_URL/DIRECT_URL. ' +
+      'Set INTEGRATION_DATABASE_URL to a disposable test database.'
+    );
+    process.exit(1);
+  }
+}
+
+if (
+  !process.env.INTEGRATION_DATABASE_URL &&
+  integrationDatabaseUrl &&
+  !isLocalDatabaseUrl(integrationDatabaseUrl) &&
+  !allowRemoteDatabaseUrlFallback
+) {
+  console.error(
+    'Refusing to run integration tests against a remote DATABASE_URL fallback. ' +
+    'Set INTEGRATION_DATABASE_URL to a disposable test database instead.'
+  );
+  process.exit(1);
+}
 
 if (!integrationDatabaseUrl) {
-  console.error('Missing database URL. Set INTEGRATION_DATABASE_URL (recommended) or DATABASE_URL.');
+  console.error('Missing database URL. Set INTEGRATION_DATABASE_URL to a disposable test database.');
   process.exit(1);
 }
 
@@ -83,7 +154,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 if (!process.env.INTEGRATION_DATABASE_URL) {
-  console.warn('INTEGRATION_DATABASE_URL is not set. Falling back to DATABASE_URL for integration tests.');
+  console.warn('INTEGRATION_DATABASE_URL is not set. Falling back to local DATABASE_URL for integration tests.');
 }
 
 const env = {

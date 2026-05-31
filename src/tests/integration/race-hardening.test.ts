@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import prisma from '../../config/database';
 import { ExamsService } from '../../modules/exams/exams.service';
@@ -10,6 +10,7 @@ import { COLLAB_QUESTION_SOURCE, COLLAB_SESSION_STATUS, COLLAB_SESSION_TYPE, PAR
 import { buildScopeKeyFromExamType } from '../../shared/utils/examNaming';
 import { MetricsRegistry } from '../../shared/metrics/registry';
 import { addLagosDateDays, getLagosDateValue } from '../../shared/streaks/domain';
+import { notificationsService } from '../../modules/notifications/notifications.service';
 
 const runIntegration = process.env.RUN_INTEGRATION_TESTS === 'true';
 const describeIntegration = runIntegration ? describe : describe.skip;
@@ -295,12 +296,11 @@ describeIntegration('DB-backed race hardening', () => {
         service.submitExam(user.id, exam.id, payload as any, uniqueToken('submit-b'))
       ]);
 
-      const successes = [first, second].filter((item) => item.status === 'fulfilled');
-      const failures = [first, second].filter((item) => item.status === 'rejected') as Array<PromiseRejectedResult>;
+      const successes = [first, second].filter((item) => item.status === 'fulfilled') as Array<PromiseFulfilledResult<any>>;
 
-      expect(successes).toHaveLength(1);
-      expect(failures).toHaveLength(1);
-      expect((failures[0].reason as any).code).toBe('EXAM_ALREADY_COMPLETED');
+      expect(successes).toHaveLength(2);
+      expect(successes[0].value.examId).toBe(exam.id);
+      expect(successes[1].value.examId).toBe(exam.id);
 
       const refreshedExam = await prisma.exam.findUnique({ where: { id: exam.id } });
       expect(refreshedExam?.status).toBe(EXAM_STATUS.COMPLETED);
@@ -312,6 +312,73 @@ describeIntegration('DB-backed race hardening', () => {
       expect(refreshedUser?.totalSp).toBe(1);
       expect(refreshedUser?.realExamsCompleted).toBe(1);
     } finally {
+      await cleanupFixture(fixture);
+    }
+  });
+
+  it('returns exam results when post-commit notification publishing fails', async () => {
+    const fixture = createFixtureState();
+    const today = getLagosDateValue(new Date());
+    const yesterday = addLagosDateDays(today, -1);
+    const publishSpy = vi
+      .spyOn(notificationsService, 'publishCreatedActivityEvents')
+      .mockRejectedValueOnce(new Error('notification transport down'));
+
+    try {
+      const user = await createUser(fixture, {
+        currentStreak: 6,
+        longestStreak: 6,
+        lastActivityDate: yesterday,
+        streakFreezesAvailable: 0,
+        realExamsCompleted: 0
+      });
+      const [question] = await createRealPastQuestions(fixture, 'Biology', 1);
+
+      const exam = await prisma.exam.create({
+        data: {
+          userId: user.id,
+          examType: EXAM_TYPES.REAL_PAST_QUESTION as any,
+          nameScopeKey: 'REAL:BIO',
+          sessionNumber: 1,
+          subjectsIncluded: ['Biology'],
+          totalQuestions: 1,
+          score: 0,
+          percentage: 0,
+          spEarned: 0,
+          status: EXAM_STATUS.IN_PROGRESS as any,
+          startedAt: new Date()
+        }
+      });
+
+      await prisma.examAnswer.create({
+        data: {
+          examId: exam.id,
+          questionId: question.id,
+          userAnswer: null,
+          isCorrect: false,
+          timeSpentSeconds: 0
+        }
+      });
+
+      const service = new ExamsService(createServiceAppStub());
+      const result = await service.submitExam(user.id, exam.id, {
+        answers: [
+          {
+            questionId: question.id,
+            answer: 'A',
+            timeSpentSeconds: 2
+          }
+        ]
+      } as any, uniqueToken('submit-notification-failure'));
+
+      expect(result.examId).toBe(exam.id);
+      expect(result.score).toBe(1);
+      expect(publishSpy).toHaveBeenCalledTimes(1);
+
+      const refreshedExam = await prisma.exam.findUnique({ where: { id: exam.id } });
+      expect(refreshedExam?.status).toBe(EXAM_STATUS.COMPLETED);
+    } finally {
+      publishSpy.mockRestore();
       await cleanupFixture(fixture);
     }
   });
