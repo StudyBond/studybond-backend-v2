@@ -373,6 +373,7 @@ describeIntegration('DB-backed race hardening', () => {
 
       expect(result.examId).toBe(exam.id);
       expect(result.score).toBe(1);
+      expect((result.stats as any).notificationEvents).toBeUndefined();
       expect(publishSpy).toHaveBeenCalledTimes(1);
 
       const refreshedExam = await prisma.exam.findUnique({ where: { id: exam.id } });

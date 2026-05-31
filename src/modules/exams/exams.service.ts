@@ -90,6 +90,17 @@ export class ExamsService {
     this.leaderboardService = new LeaderboardService();
   }
 
+  private toExamResultResponse(result: ExamResultResponse): ExamResultResponse {
+    return {
+      ...result,
+      stats: {
+        totalSp: result.stats.totalSp,
+        weeklySp: result.stats.weeklySp,
+        currentStreak: result.stats.currentStreak,
+      },
+    };
+  }
+
   private examHistoryVersionKey(userId: number): string {
     return `exam:history:version:${userId}`;
   }
@@ -1186,7 +1197,7 @@ export class ExamsService {
       const routeKey = buildRouteKey("POST", "/api/exams/:examId/submit", {
         examId,
       });
-      return idempotencyService.execute(
+      const result = await idempotencyService.execute<ExamResultResponse>(
         {
           userId,
           routeKey,
@@ -1195,6 +1206,7 @@ export class ExamsService {
         },
         () => this.submitExam(userId, examId, input),
       );
+      return this.toExamResultResponse(result);
     }
 
     const submitLockOwner = await this.acquireSubmitLock(userId, examId);
@@ -1538,7 +1550,7 @@ export class ExamsService {
         }
       }
 
-      return {
+      return this.toExamResultResponse({
         examId: exam.id,
         examType: exam.examType as any,
         subjects: exam.subjectsIncluded,
@@ -1557,7 +1569,7 @@ export class ExamsService {
         completedAt: now.toISOString(),
         questions: questionsWithAnswers,
         stats: result.userStats,
-      };
+      });
     } finally {
       await this.releaseSubmitLock(examId, submitLockOwner);
     }
