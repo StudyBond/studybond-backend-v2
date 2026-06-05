@@ -39,7 +39,7 @@ export const UPLOAD_CONFIG = {
     MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
 };
 
-const subscriptionPriceNaira = parsePositiveInt(process.env.SUBSCRIPTION_PRICE_NAIRA, 5000);
+const subscriptionPriceNaira = parsePositiveInt(process.env.SUBSCRIPTION_PRICE_NAIRA, 4000);
 const subscriptionDurationMonths = parsePositiveInt(process.env.SUBSCRIPTION_DURATION_MONTHS, 5);
 const configuredSubscriptionProvider = (process.env.SUBSCRIPTION_PAYMENT_PROVIDER || 'PAYSTACK').trim().toUpperCase();
 

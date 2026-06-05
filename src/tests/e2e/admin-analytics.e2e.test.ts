@@ -587,7 +587,7 @@ async function seedAnalyticsData(
       userId: paidPremiumUser.id,
       provider: 'PAYSTACK',
       planType: 'UI_PREMIUM_5_MONTH',
-      amountPaid: 5000,
+      amountPaid: 4000,
       paymentReference: uniqueToken('analytics-payment-ref'),
       status: 'ACTIVE',
       startDate: now,
@@ -608,7 +608,7 @@ async function seedAnalyticsData(
       provider: 'PAYSTACK',
       reference: uniqueToken('analytics-payment'),
       status: 'SUCCESS',
-      amountPaid: 5000,
+      amountPaid: 4000,
       currency: 'NGN',
       paidAt: now
     }
@@ -740,7 +740,7 @@ async function seedAnalyticsData(
       recentEmailFailuresLast24Hours: 1,
       leaderboardProjectionBacklog: 1,
       successfulPayments: 1,
-      successfulRevenueNaira: 5000,
+      successfulRevenueNaira: 4000,
       manualGrants: 1,
       promotionalGrants: 1,
       correctiveGrants: 1,

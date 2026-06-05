@@ -252,7 +252,7 @@ async function seedUser360Data(
       userId: targetUser.id,
       provider: 'PAYSTACK',
       planType: 'UI_PREMIUM_5_MONTH',
-      amountPaid: 5000,
+      amountPaid: 4000,
       paymentReference: uniqueToken('user360-payment-ref'),
       status: 'ACTIVE',
       startDate: now,
@@ -274,7 +274,7 @@ async function seedUser360Data(
       provider: 'PAYSTACK',
       reference: uniqueToken('user360-payment'),
       status: 'SUCCESS',
-      amountPaid: 5000,
+      amountPaid: 4000,
       currency: 'NGN',
       channel: 'card',
       paidAt: now
@@ -642,7 +642,7 @@ describeE2E('Admin user 360 (HTTP e2e)', () => {
       expect(response.statusCode).toBe(200);
       const payload = response.json();
       expect(payload.premium.latestSuccessfulPayment).not.toBeNull();
-      expect(payload.premium.latestSuccessfulPayment.amountPaid).toBeGreaterThanOrEqual(5000);
+      expect(payload.premium.latestSuccessfulPayment.amountPaid).toBeGreaterThanOrEqual(4000);
       expect(payload.premium.subscription).not.toBeNull();
       expect(payload.premium.activeEntitlements.length).toBeGreaterThanOrEqual(1);
     } finally {

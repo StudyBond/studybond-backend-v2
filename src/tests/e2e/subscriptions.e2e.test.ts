@@ -164,7 +164,7 @@ describeE2E('Subscriptions module (HTTP e2e)', () => {
         data: {
           reference: 'SBSUB-100-init',
           accessCode: 'access-code-123',
-          amountNaira: 5000,
+          amountNaira: 4000,
           autoRenew: true
         }
       });
@@ -198,7 +198,7 @@ describeE2E('Subscriptions module (HTTP e2e)', () => {
         data: {
           userId: user.id,
           reference: 'SBSUB-VERIFY-1',
-          amountPaid: 5000,
+          amountPaid: 4000,
           currency: 'NGN',
           status: 'PENDING',
           requestedAutoRenew: true
@@ -209,7 +209,7 @@ describeE2E('Subscriptions module (HTTP e2e)', () => {
         provider: 'PAYSTACK',
         reference: 'SBSUB-VERIFY-1',
         paymentStatus: 'SUCCESS',
-        amountMinor: 500000,
+        amountMinor: 400000,
         currency: 'NGN',
         channel: 'card',
         gatewayResponse: 'Approved',
@@ -227,7 +227,7 @@ describeE2E('Subscriptions module (HTTP e2e)', () => {
         providerPayload: {
           status: 'success',
           reference: 'SBSUB-VERIFY-1',
-          amount: 500000,
+          amount: 400000,
           currency: 'NGN'
         },
       });
@@ -317,7 +317,7 @@ describeE2E('Subscriptions module (HTTP e2e)', () => {
         data: {
           userId: user.id,
           planType: 'PREMIUM_5_MONTH',
-          amountPaid: 5000,
+          amountPaid: 4000,
           paymentReference: 'SBSUB-VERIFY-2',
           status: 'ACTIVE',
           startDate: new Date(Date.now() - (15 * 24 * 60 * 60 * 1000)),
@@ -330,7 +330,7 @@ describeE2E('Subscriptions module (HTTP e2e)', () => {
         data: {
           userId: user.id,
           reference: 'SBSUB-VERIFY-2',
-          amountPaid: 5000,
+          amountPaid: 4000,
           currency: 'NGN',
           status: 'PENDING',
           requestedAutoRenew: true
@@ -341,7 +341,7 @@ describeE2E('Subscriptions module (HTTP e2e)', () => {
         provider: 'PAYSTACK',
         reference: 'SBSUB-VERIFY-2',
         paymentStatus: 'SUCCESS',
-        amountMinor: 500000,
+        amountMinor: 400000,
         currency: 'NGN',
         channel: 'card',
         gatewayResponse: 'Approved',
@@ -359,7 +359,7 @@ describeE2E('Subscriptions module (HTTP e2e)', () => {
         providerPayload: {
           status: 'success',
           reference: 'SBSUB-VERIFY-2',
-          amount: 500000,
+          amount: 400000,
           currency: 'NGN'
         },
       });
@@ -449,7 +449,7 @@ describeE2E('Subscriptions module (HTTP e2e)', () => {
         data: {
           userId: user.id,
           planType: 'PREMIUM_5_MONTH',
-          amountPaid: 5000,
+          amountPaid: 4000,
           paymentReference: 'SBSUB-CANCEL-1',
           status: 'ACTIVE',
           startDate: new Date(Date.now() - (150 * 24 * 60 * 60 * 1000)),
