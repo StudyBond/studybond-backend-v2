@@ -8,7 +8,8 @@ import {
     startDailyChallengeSchema,
     submitExamSchema,
     examIdParamSchema,
-    historyQuerySchema
+    historyQuerySchema,
+    syncExamsSchema
 } from './exams.schema';
 import { parseWithSchema } from '../../shared/utils/validation';
 import { optionalIdempotencyHeadersSchema } from '../../shared/idempotency/schema';
@@ -166,6 +167,7 @@ export class ExamsController {
             idempotencyKey
         );
 
+
         return reply.status(201).send({
             success: true,
             data: result
@@ -188,6 +190,22 @@ export class ExamsController {
         return reply.status(200).send({
             success: true,
             data: result
+        });
+    };
+
+    /* POST /exams/sync - Sync a batch of offline submissions */
+    syncExams = async (
+        req: FastifyRequest,
+        reply: FastifyReply
+    ) => {
+        const payload = parseWithSchema(syncExamsSchema, req.body, 'Invalid sync payload');
+        const userId = (req.user as { userId: number }).userId;
+
+        const results = await this.examsService.syncExams(userId, payload);
+
+        return reply.status(200).send({
+            success: true,
+            data: results
         });
     };
 }

@@ -26,6 +26,9 @@ import {
   QuestionWithAnswer,
   EligibilityCheck,
   QuestionWithMeta,
+  SyncExamResult,
+  SyncExamsResponse,
+  SyncExamsInput,
 } from "./exams.types";
 import {
   selectQuestionsForExam,
@@ -1201,7 +1204,7 @@ export class ExamsService {
         {
           userId,
           routeKey,
-          idempotencyKey,
+        idempotencyKey,
           payload: input,
         },
         () => this.submitExam(userId, examId, input),
@@ -1234,7 +1237,7 @@ export class ExamsService {
         throw new AppError(
           "Exam not found",
           404,
-          EXAM_ERROR_CODES.EXAM_NOT_FOUND
+          EXAM_ERROR_CODES.EXAM_NOT_FOUND,
         );
       }
 
@@ -1258,12 +1261,17 @@ export class ExamsService {
           examDuration * 1000 +
           EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS * 1000,
       );
+      // Extended grace period for offline submissions
+      const extendedExpiresAt = new Date(
+        expiresAt.getTime() +
+          EXAM_CONFIG.OFFLINE_SUBMISSION_EXTENDED_GRACE_SECONDS * 1000,
+      );
 
-      if (now > expiresAt) {
+      if (now > extendedExpiresAt) {
         throw new AppError(
           "Exam time has expired",
           400,
-          EXAM_ERROR_CODES.EXAM_EXPIRED
+          EXAM_ERROR_CODES.EXAM_EXPIRED,
         );
       }
 
@@ -1303,8 +1311,11 @@ export class ExamsService {
       const gradedAnswers = gradeAnswers(userAnswers, questions);
 
       // Calculate score
-      const timeTaken = Math.floor(
-        (now.getTime() - exam.startedAt.getTime()) / 1000,
+      // Cap timeTakenSeconds at the configured exam duration plus grace period
+      // to avoid storing huge values in case of delayed offline sync.
+      const timeTaken = Math.min(
+        Math.floor((now.getTime() - exam.startedAt.getTime()) / 1000),
+        examDuration + EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS,
       );
       const scoring = calculateExamScore(
         gradedAnswers,
@@ -2242,5 +2253,42 @@ export class ExamsService {
       status: updatedExam.status,
       message: "Exam abandoned successfully",
     };
+  }
+
+  /* Sync a batch of offline exam submissions */
+  async syncExams(
+    userId: number,
+    input: SyncExamsInput,
+  ): Promise<SyncExamsResponse> {
+    const results: SyncExamResult[] = [];
+
+    for (const submission of input.submissions) {
+      try {
+        const result = await this.submitExam(
+          userId,
+          submission.examId,
+          { answers: submission.answers },
+          submission.idempotencyKey,
+        );
+
+        results.push({
+          examId: submission.examId,
+          success: true,
+          data: result,
+        });
+      } catch (err: any) {
+        const message = err.message || "An unexpected error occurred during submission.";
+        const errorCode = err instanceof AppError ? err.code : undefined;
+
+        results.push({
+          examId: submission.examId,
+          success: false,
+          error: message,
+          errorCode,
+        });
+      }
+    }
+
+    return { results };
   }
 }

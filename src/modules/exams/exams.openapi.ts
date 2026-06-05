@@ -118,3 +118,15 @@ export const examEligibilityPayloadSchema = z.object({
   creditsRemaining: z.number().int().optional(),
   requestedCredits: z.number().int().optional()
 }).passthrough();
+
+export const syncExamResultSchema = z.object({
+  examId: z.number().int().positive(),
+  success: z.boolean(),
+  error: z.string().optional(),
+  errorCode: z.string().optional(),
+  data: examResultPayloadSchema.optional()
+}).passthrough();
+
+export const syncExamsPayloadSchema = z.object({
+  results: z.array(syncExamResultSchema)
+}).passthrough();

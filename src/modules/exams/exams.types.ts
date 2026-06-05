@@ -224,3 +224,25 @@ export interface RetakeEligibility {
     reason?: string;
     errorCode?: string;
 }
+
+export interface SyncExamResult {
+    examId: number;
+    success: boolean;
+    error?: string;
+    errorCode?: string;
+    data?: ExamResultResponse;
+}
+
+export interface SyncExamsResponse {
+    results: SyncExamResult[];
+}
+
+export interface SyncExamItemInput {
+    examId: number;
+    answers: AnswerInput[];
+    idempotencyKey?: string;
+}
+
+export interface SyncExamsInput {
+    submissions: SyncExamItemInput[];
+}

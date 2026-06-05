@@ -2,14 +2,15 @@
 
 import { FastifyInstance } from 'fastify';
 import { ExamsController } from './exams.controller';
-import { startExamSchema, startDailyChallengeSchema, submitExamSchema, examIdParamSchema, historyQuerySchema } from './exams.schema';
+import { startExamSchema, startDailyChallengeSchema, submitExamSchema, examIdParamSchema, historyQuerySchema, syncExamsSchema } from './exams.schema';
 import { optionalIdempotencyHeadersSchema } from '../../shared/idempotency/schema';
 import {
     examAbandonPayloadSchema,
     examHistoryPayloadSchema,
     examResultPayloadSchema,
     examSessionPayloadSchema,
-    examEligibilityPayloadSchema
+    examEligibilityPayloadSchema,
+    syncExamsPayloadSchema
 } from './exams.openapi';
 import { successEnvelopeSchema, withStandardErrorResponses } from '../../shared/openapi/responses';
 
@@ -164,5 +165,20 @@ export async function examsRoutes(app: FastifyInstance) {
             })
         }
     }, controller.abandonExam);
+
+    /* POST /exams/sync - Sync a batch of offline submissions */
+    app.post('/sync', {
+        preValidation: [app.authenticate],
+        schema: {
+            tags: ['Exams'],
+            summary: 'Sync offline exams',
+            description: 'Processes a batch of offline exam submissions.',
+            body: syncExamsSchema,
+            security: [{ bearerAuth: [] }],
+            response: withStandardErrorResponses({
+                200: successEnvelopeSchema(syncExamsPayloadSchema)
+            })
+        }
+    }, controller.syncExams);
 
 }

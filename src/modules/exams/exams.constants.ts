@@ -46,7 +46,15 @@ export const EXAM_CONFIG = {
     FULL_EXAM_DURATION_SECONDS: 90 * 60,
     COLLAB_EXAM_DURATION_SECONDS: 90 * 60,
     DAILY_CHALLENGE_DURATION_SECONDS: 3 * 60,
-    SUBMISSION_GRACE_PERIOD_SECONDS: 90 /* Time buffer for network latency in seconds */
+    SUBMISSION_GRACE_PERIOD_SECONDS: 90, /* Time buffer for network latency in seconds */
+    /**
+     * Extended grace period for offline submissions.
+     * When a student loses connectivity mid-exam and reconnects after the timer
+     * has expired, we allow an additional window beyond the normal grace period.
+     * This accounts for common 2-5 minute network outages in Nigeria.
+     * Total allowed = duration + SUBMISSION_GRACE_PERIOD + OFFLINE_EXTENDED_GRACE.
+     */
+    OFFLINE_SUBMISSION_EXTENDED_GRACE_SECONDS: 300 /* 5 minutes beyond normal grace */
 } as const;
 
 

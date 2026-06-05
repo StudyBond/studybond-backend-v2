@@ -141,3 +141,31 @@ export type AnswerInput = z.infer<typeof answerSchema>;
 export type SubmitExamInput = z.infer<typeof submitExamSchema>;
 export type ExamIdParam = z.infer<typeof examIdParamSchema>;
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
+
+export const syncExamItemSchema = z.object({
+    examId: z
+        .number({ message: 'Exam ID is required' } as any)
+        .int('Exam ID must be an integer')
+        .positive('Exam ID must be positive'),
+
+    answers: z
+        .array(answerSchema)
+        .refine(
+            (answers) => {
+                const ids = answers.map(a => a.questionId);
+                return new Set(ids).size === ids.length;
+            },
+            'Duplicate question IDs are not allowed'
+        ),
+
+    idempotencyKey: z.string().optional()
+}).strict();
+
+export const syncExamsSchema = z.object({
+    submissions: z
+        .array(syncExamItemSchema)
+        .min(1, 'At least one submission is required')
+}).strict();
+
+export type SyncExamItemInput = z.infer<typeof syncExamItemSchema>;
+export type SyncExamsInput = z.infer<typeof syncExamsSchema>;
