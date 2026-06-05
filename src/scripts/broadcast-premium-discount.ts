@@ -56,7 +56,7 @@ function buildBroadcastEmail(fullName: string) {
       '',
       'Keep going. UI is closer than it feels.',
       '',
-      'Marvellous',
+      'Olatunji Marvellous (DrSponsor)',
       'Founder, StudyBond',
     ].join('\n'),
     html: `
