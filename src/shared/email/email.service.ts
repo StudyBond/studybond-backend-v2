@@ -123,6 +123,7 @@ export class TransactionalEmailService {
       case EmailType.SUBSCRIPTION_PROMPT:
       case EmailType.SUBSCRIPTION_EXPIRY_WARNING:
       case EmailType.SUBSCRIPTION_EXPIRED_NOTICE:
+      case EmailType.PREMIUM_ACTIVATED:
         return EMAIL_CONFIG.REMINDERS_FROM_ADDRESS;
       default:
         return EMAIL_CONFIG.FROM_ADDRESS;

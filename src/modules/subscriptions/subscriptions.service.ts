@@ -1,8 +1,10 @@
 import { randomBytes } from 'crypto';
 import { FastifyInstance } from 'fastify';
-import { NotificationKind, PaymentProvider, Prisma, SubscriptionPaymentStatus, SubscriptionStatus } from '@prisma/client';
+import { EmailType, NotificationKind, PaymentProvider, Prisma, SubscriptionPaymentStatus, SubscriptionStatus } from '@prisma/client';
 import prisma from '../../config/database';
-import { AUTH_CONFIG, SUBSCRIPTION_CONFIG } from '../../config/constants';
+import { AUTH_CONFIG, SUBSCRIPTION_ALERT_CONFIG, SUBSCRIPTION_CONFIG } from '../../config/constants';
+import { transactionalEmailService } from '../../shared/email/email.service';
+import { buildPremiumActivatedTemplate } from '../../shared/email/email.templates';
 import { AppError } from '../../shared/errors/AppError';
 import { NotFoundError } from '../../shared/errors/NotFoundError';
 import { ValidationError } from '../../shared/errors/ValidationError';
@@ -723,6 +725,12 @@ export class SubscriptionService {
       await notificationsService.publishCreatedActivityEvents(result.notificationEvents);
     }
 
+    // Fire-and-forget: send premium activation confirmation email
+    if (result.activated && result.paymentStatus === 'SUCCESS' && result.subscription?.endDate) {
+      this.sendPremiumActivationEmail(normalizedPayment.userId, result.subscription.endDate)
+        .catch((err) => this.app?.log.error({ err, userId: normalizedPayment.userId }, 'Premium activation email failed (non-blocking)'));
+    }
+
     this.metricCounter('subscription_verification_total', {
       source,
       provider: normalizedPayment.provider,
@@ -1032,5 +1040,36 @@ export class SubscriptionService {
     }
 
     return expiredUsers;
+  }
+
+  private async sendPremiumActivationEmail(userId: number, endDateIso: string): Promise<void> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, fullName: true, isPremium: true }
+    });
+
+    if (!user || !user.isPremium) return;
+
+    const endDate = new Date(endDateIso);
+    if (!Number.isFinite(endDate.getTime())) return;
+
+    const template = buildPremiumActivatedTemplate(
+      user.fullName,
+      endDate,
+      SUBSCRIPTION_ALERT_CONFIG.APP_BASE_URL
+    );
+
+    await transactionalEmailService.send({
+      userId,
+      emailType: EmailType.SERVICE_NOTICE,
+      to: { email: user.email, name: user.fullName },
+      subject: template.subject,
+      html: template.html,
+      text: template.text,
+      metadata: {
+        campaignKind: 'premium_activated',
+        endDate: endDateIso,
+      },
+    });
   }
 }

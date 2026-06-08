@@ -428,3 +428,71 @@ export function buildSubscriptionExpiredNoticeTemplate(
     `
   };
 }
+
+// ============================================
+// PREMIUM ACTIVATION CONFIRMATION
+// ============================================
+// This is a transactional receipt, NOT a marketing email.
+// Intentionally text-heavy with minimal styling to ensure
+// delivery to Gmail Primary/Updates instead of Promotions.
+
+function formatExpiryDate(endDate: Date): string {
+  return endDate.toLocaleDateString('en-NG', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+export function buildPremiumActivatedTemplate(
+  fullName: string,
+  endDate: Date,
+  appBaseUrl = 'https://studybond.app'
+): EmailTemplate {
+  const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+  const formattedExpiry = formatExpiryDate(endDate);
+  const settingsUrl = `${appBaseUrl}/dashboard/settings?tab=subscription`;
+
+  return {
+    subject: 'Your StudyBond Premium account is now active',
+    text: [
+      `Hi ${firstName},`,
+      '',
+      'Your StudyBond Premium account has been activated.',
+      '',
+      `Your premium access is valid until ${formattedExpiry}.`,
+      '',
+      'Your account now includes:',
+      '• Unlimited exams and retakes',
+      '• AI-powered answer explanations',
+      '• Streak freezes to protect your progress',
+      '• Priority access to new features',
+      '',
+      `You can view your subscription details here: ${settingsUrl}`,
+      '',
+      'Thank you for choosing StudyBond Premium.',
+      '',
+      'StudyBond',
+    ].join('\n'),
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h2 style="margin-bottom: 16px;">Your Premium account is now active</h2>
+        <p>Hi ${escapeHtml(firstName)},</p>
+        <p>Your StudyBond Premium account has been activated.</p>
+        <p>Your premium access is valid until <strong>${escapeHtml(formattedExpiry)}</strong>.</p>
+        <p>Your account now includes:</p>
+        <ul style="padding-left: 20px; margin: 12px 0;">
+          <li>Unlimited exams and retakes</li>
+          <li>AI-powered answer explanations</li>
+          <li>Streak freezes to protect your progress</li>
+          <li>Priority access to new features</li>
+        </ul>
+        <p style="margin-top: 20px;">
+          <a href="${escapeHtml(settingsUrl)}" style="color: #4f46e5; text-decoration: underline;">View your subscription details</a>
+        </p>
+        <p style="color: #6b7280; margin-top: 24px; font-size: 14px;">Thank you for choosing StudyBond Premium.</p>
+      </div>
+    `
+  };
+}
+
