@@ -2035,6 +2035,43 @@ export class AuthService {
     });
 
     if (rotated.count !== 1) {
+      // Re-read the database to check if a concurrent request already rotated the token
+      const doubleCheckSession = await prisma.userSession.findUnique({
+        where: { id: session.id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              isBanned: true,
+              authPolicyVersion: true
+            }
+          }
+        }
+      });
+
+      if (
+        doubleCheckSession &&
+        doubleCheckSession.isActive &&
+        !doubleCheckSession.user.isBanned &&
+        doubleCheckSession.authPolicyVersion === doubleCheckSession.user.authPolicyVersion &&
+        expectedTokenVersion === doubleCheckSession.tokenVersion - 1
+      ) {
+        // A concurrent request successfully rotated the token version just before us.
+        // We can safely return the current rotated version instead of throwing 401.
+        return generateTokens(
+          {
+            id: doubleCheckSession.user.id,
+            email: doubleCheckSession.user.email,
+            role: doubleCheckSession.user.role
+          },
+          doubleCheckSession.id,
+          payload.deviceId,
+          doubleCheckSession.tokenVersion
+        );
+      }
+
       throw new AuthError('Session rotation failed due to a concurrent refresh attempt.', 401, 'SESSION_INVALID');
     }
 
