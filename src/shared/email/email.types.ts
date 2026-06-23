@@ -18,6 +18,7 @@ export interface TransactionalEmailInput {
   metadata?: Prisma.InputJsonValue;
   isCritical?: boolean;
   debugPreviewCode?: string;
+  from?: EmailAddress;
 }
 
 export interface EmailProviderSendInput {

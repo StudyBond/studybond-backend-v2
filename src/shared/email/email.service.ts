@@ -131,7 +131,7 @@ export class TransactionalEmailService {
   }
 
   private async previewSend(input: TransactionalEmailInput): Promise<TransactionalEmailSendResult> {
-    const fromAddress = this.getFromAddressForType(input.emailType);
+    const fromAddress = input.from?.email || this.getFromAddressForType(input.emailType);
     await this.writeEmailLog(input, {
       status: 'preview',
       metadata: {
@@ -200,7 +200,8 @@ export class TransactionalEmailService {
     }
 
     const attempts: TransactionalEmailSendResult['attempts'] = [];
-    const fromAddress = this.getFromAddressForType(input.emailType);
+    const fromAddress = input.from?.email || this.getFromAddressForType(input.emailType);
+    const fromName = input.from?.name || EMAIL_CONFIG.FROM_NAME;
 
     for (let index = 0; index < availableProviders.length; index += 1) {
       const provider = availableProviders[index];
@@ -210,7 +211,7 @@ export class TransactionalEmailService {
         const result = await provider.send({
           from: {
             email: fromAddress,
-            name: EMAIL_CONFIG.FROM_NAME
+            name: fromName
           },
           to: input.to,
           subject: input.subject,
