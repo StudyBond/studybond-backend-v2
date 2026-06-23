@@ -19,7 +19,6 @@ import { transactionalEmailService } from '../shared/email/email.service';
 const BROADCAST_ID = 'ui_open_secret_outreach_2026_06_23';
 const BATCH_SIZE = 50;
 const BATCH_DELAY_MS = 2000;
-const DRY_RUN = process.env.DRY_RUN !== 'false'; // Default: true (safe)
 
 function escapeHtml(value: string): string {
   return value
