@@ -90,25 +90,63 @@ function buildOutreachEmail(fullName: string) {
   };
 }
 
+function parseArgs(argv: string[]) {
+  const args: Record<string, string | boolean> = {};
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (!token.startsWith('--')) continue;
+
+    const trimmed = token.slice(2);
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex >= 0) {
+      args[trimmed.slice(0, eqIndex)] = trimmed.slice(eqIndex + 1) || true;
+      continue;
+    }
+
+    const next = argv[index + 1];
+    if (!next || next.startsWith('--')) {
+      args[trimmed] = true;
+      continue;
+    }
+
+    args[trimmed] = next;
+    index += 1;
+  }
+
+  return args;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const dryRun = args.send !== true && process.env.DRY_RUN !== 'false';
+  const emailFilter = args.email ? String(args.email).trim().toLowerCase() : null;
+
   console.log(`\n📧 FREE USERS PREMIUM OUTREACH BROADCAST`);
-  console.log(`   Mode: ${DRY_RUN ? '🔒 DRY RUN (set DRY_RUN=false to send)' : '🚀 LIVE SEND'}`);
+  console.log(`   Mode: ${dryRun ? '🔒 DRY RUN (pass --send or set DRY_RUN=false to send)' : '🚀 LIVE SEND'}`);
   console.log(`   Broadcast ID: ${BROADCAST_ID}`);
   console.log(`   Batch size: ${BATCH_SIZE}`);
+  if (emailFilter) {
+    console.log(`   Filter by email: ${emailFilter}`);
+  }
   console.log('');
 
-  // 1. Find all verified, non-premium, non-banned users who are not unsubscribed
+  // 1. Find target users. If email filter is active, look only for that email.
+  const whereClause: any = emailFilter
+    ? { email: emailFilter }
+    : {
+        isVerified: true,
+        isPremium: false,
+        isBanned: false,
+        emailUnsubscribed: false,
+      };
+
   const users = await prisma.user.findMany({
-    where: {
-      isVerified: true,
-      isPremium: false,
-      isBanned: false,
-      emailUnsubscribed: false,
-    },
+    where: whereClause,
     select: {
       id: true,
       email: true,
@@ -117,27 +155,29 @@ async function main() {
     orderBy: { id: 'asc' },
   });
 
-  console.log(`   Found ${users.length} eligible free users`);
+  console.log(`   Found ${users.length} eligible users`);
 
   if (users.length === 0) {
     console.log('   No eligible users found. Exiting.');
     process.exit(0);
   }
 
-  // 2. Check who already received this broadcast (idempotent re-runs)
-  const alreadySent = new Set(
-    (await prisma.emailLog.findMany({
-      where: {
-        emailType: EmailType.SUBSCRIPTION_PROMPT,
-        status: 'sent',
-        metadata: {
-          path: ['broadcastId'],
-          equals: BROADCAST_ID,
-        },
-      },
-      select: { userId: true },
-    })).map((row: { userId: number }) => row.userId)
-  );
+  // 2. Check who already received this broadcast (idempotent re-runs, skipped if email filter is active)
+  const alreadySent = emailFilter
+    ? new Set<number>()
+    : new Set(
+        (await prisma.emailLog.findMany({
+          where: {
+            emailType: EmailType.SUBSCRIPTION_PROMPT,
+            status: 'sent',
+            metadata: {
+              path: ['broadcastId'],
+              equals: BROADCAST_ID,
+            },
+          },
+          select: { userId: true },
+        })).map((row: { userId: number }) => row.userId)
+      );
 
   const toSend = users.filter((u: { id: number }) => !alreadySent.has(u.id));
 
@@ -164,7 +204,7 @@ async function main() {
     for (const user of batch) {
       const email = buildOutreachEmail(user.fullName);
 
-      if (DRY_RUN) {
+      if (dryRun) {
         console.log(`     [DRY] Would send to: ${user.email} (${user.fullName})`);
         sent += 1;
         continue;
@@ -213,10 +253,10 @@ async function main() {
   console.log(`   Failed: ${failed}`);
   console.log(`   Total users: ${users.length}`);
 
-  if (DRY_RUN) {
+  if (dryRun) {
     console.log('');
     console.log('   ⚠️  This was a DRY RUN. No emails were actually sent.');
-    console.log('   To send for real, run: DRY_RUN=false npx tsx src/scripts/broadcast-free-outreach-secret.ts');
+    console.log('   To send for real, pass the --send flag or run with DRY_RUN=false.');
   }
 
   process.exit(0);
