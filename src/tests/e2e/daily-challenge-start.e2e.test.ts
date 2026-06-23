@@ -16,6 +16,7 @@ interface E2EFixture {
   userIds: number[];
   sessionIds: string[];
   questionIds: number[];
+  institutionIds: number[];
 }
 
 function uniqueToken(prefix: string): string {
@@ -71,10 +72,25 @@ async function createAuthHeader(
   return `Bearer ${tokens.accessToken}`;
 }
 
+async function createInstitutionFixture(fixture: E2EFixture) {
+  const token = uniqueToken('daily-inst').replace(/-/g, '').slice(0, 12);
+  const institution = await prisma.institution.create({
+    data: {
+      code: token.toUpperCase(),
+      name: `Daily Institution ${token}`,
+      slug: `daily-institution-${token.toLowerCase()}`,
+      isActive: true,
+    },
+  });
+  fixture.institutionIds.push(institution.id);
+  return institution;
+}
+
 async function createQuestions(
   fixture: E2EFixture,
   subject: string,
   count: number,
+  institutionId?: number,
 ): Promise<void> {
   const marker = uniqueToken(`e2e-daily-${subject}`);
   const rows = Array.from({ length: count }).map((_, index) => ({
@@ -88,6 +104,7 @@ async function createQuestions(
     subject,
     topic: 'E2E Daily Challenge',
     questionType: 'real_past_question',
+    ...(institutionId !== undefined ? { institutionId } : {}),
   }));
 
   await prisma.question.createMany({ data: rows });
@@ -110,6 +127,7 @@ async function createInProgressDailyChallengeExam(
   userId: number,
   subjects: readonly string[],
   startedAt: Date,
+  institutionId?: number | null,
 ) {
   const subjectQuestions = await prisma.question.findMany({
     where: {
@@ -134,7 +152,7 @@ async function createInProgressDailyChallengeExam(
   const exam = await prisma.exam.create({
     data: {
       userId,
-      institutionId: null,
+      ...(institutionId !== undefined ? { institutionId } : {}),
       examType: EXAM_TYPES.DAILY_CHALLENGE as any,
       nameScopeKey: 'DAILY:FULL',
       sessionNumber: 1,
@@ -196,6 +214,12 @@ async function cleanupFixture(fixture: E2EFixture): Promise<void> {
       where: { id: { in: fixture.questionIds } },
     });
   }
+
+  if (fixture.institutionIds.length > 0) {
+    await prisma.institution.deleteMany({
+      where: { id: { in: fixture.institutionIds } },
+    });
+  }
 }
 
 describeE2E('Daily challenge start (HTTP e2e)', () => {
@@ -205,6 +229,7 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
       userIds: [],
       sessionIds: [],
       questionIds: [],
+      institutionIds: [],
     };
 
     const app = await buildApp();
@@ -243,11 +268,13 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
       const createdExam = await prisma.exam.findUnique({
         where: { id: body.data.examId },
         select: {
+          institutionId: true,
           nameScopeKey: true,
           sessionNumber: true,
         },
       });
 
+      expect(createdExam?.institutionId).toBe(user.targetInstitutionId);
       expect(createdExam?.nameScopeKey).toBe('DAILY:FULL');
       expect(createdExam?.sessionNumber).toBe(1);
     } finally {
@@ -261,6 +288,7 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
       userIds: [],
       sessionIds: [],
       questionIds: [],
+      institutionIds: [],
     };
 
     const app = await buildApp();
@@ -278,6 +306,7 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
         user.id,
         subjects,
         new Date(Date.now() - 60 * 1000),
+        user.targetInstitutionId,
       );
 
       const response = await app.inject({
@@ -305,6 +334,7 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
         },
         select: {
           id: true,
+          institutionId: true,
           status: true,
         },
       });
@@ -312,8 +342,71 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
       expect(exams).toHaveLength(1);
       expect(exams[0]).toMatchObject({
         id: existingExam.id,
+        institutionId: user.targetInstitutionId,
         status: EXAM_STATUS.IN_PROGRESS,
       });
+    } finally {
+      await cleanupFixture(fixture);
+      await app.close();
+    }
+  });
+
+  it('starts the daily challenge in the user target institution scope', async () => {
+    const fixture: E2EFixture = {
+      userIds: [],
+      sessionIds: [],
+      questionIds: [],
+      institutionIds: [],
+    };
+
+    const app = await buildApp();
+    try {
+      const institution = await createInstitutionFixture(fixture);
+      const user = await createUserFixture(fixture, {
+        targetInstitutionId: institution.id,
+      });
+      const authHeader = await createAuthHeader(fixture, user);
+      const subjects = ['Mathematics', 'English', 'Physics', 'Chemistry'] as const;
+
+      for (const subject of subjects) {
+        await createQuestions(fixture, subject, 3, institution.id);
+      }
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/exams/daily-challenge/start',
+        headers: {
+          authorization: authHeader,
+          'idempotency-key': uniqueToken('daily-challenge-institution-scope'),
+        },
+        payload: {
+          subjects,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as any;
+
+      const createdExam = await prisma.exam.findUnique({
+        where: { id: body.data.examId },
+        select: {
+          institutionId: true,
+          examAnswers: {
+            select: {
+              question: {
+                select: { institutionId: true },
+              },
+            },
+          },
+        },
+      });
+
+      expect(createdExam?.institutionId).toBe(institution.id);
+      expect(
+        createdExam?.examAnswers.every(
+          (answer) => answer.question.institutionId === institution.id,
+        ),
+      ).toBe(true);
     } finally {
       await cleanupFixture(fixture);
       await app.close();
@@ -325,6 +418,7 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
       userIds: [],
       sessionIds: [],
       questionIds: [],
+      institutionIds: [],
     };
 
     const app = await buildApp();
@@ -349,6 +443,7 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
               60) *
               1000,
         ),
+        user.targetInstitutionId,
       );
 
       const response = await app.inject({
@@ -372,17 +467,24 @@ describeE2E('Daily challenge start (HTTP e2e)', () => {
       const [oldExam, newExam] = await Promise.all([
         prisma.exam.findUnique({
           where: { id: expiredExam.id },
-          select: { status: true, completedAt: true },
+          select: { status: true, completedAt: true, institutionId: true },
         }),
         prisma.exam.findUnique({
           where: { id: body.data.examId },
-          select: { status: true, sessionNumber: true, nameScopeKey: true },
+          select: {
+            status: true,
+            sessionNumber: true,
+            nameScopeKey: true,
+            institutionId: true,
+          },
         }),
       ]);
 
       expect(oldExam?.status).toBe(EXAM_STATUS.ABANDONED);
       expect(oldExam?.completedAt).not.toBeNull();
+      expect(oldExam?.institutionId).toBe(user.targetInstitutionId);
       expect(newExam).toMatchObject({
+        institutionId: user.targetInstitutionId,
         status: EXAM_STATUS.IN_PROGRESS,
         sessionNumber: 2,
         nameScopeKey: 'DAILY:FULL',

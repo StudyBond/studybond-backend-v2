@@ -895,10 +895,11 @@ export class ExamsService {
       EXAM_TYPES.DAILY_CHALLENGE as any,
       input.subjects,
     );
+    const institution = await institutionContextService.resolveForUser(userId);
 
     const resumedSession = await this.reuseOrExpireInProgressExam(
       userId,
-      null,
+      institution.id,
       scopeKey,
     );
     if (resumedSession) {
@@ -915,6 +916,7 @@ export class ExamsService {
     const existingChallenge = await prisma.exam.findFirst({
       where: {
         userId,
+        institutionId: institution.id,
         examType: EXAM_TYPES.DAILY_CHALLENGE as any,
         startedAt: { gte: startOfDayGmt1 },
       },
@@ -930,7 +932,7 @@ export class ExamsService {
     await this.enforceStartRateLimit(userId);
 
     const dateString = nowGmt1.toISOString().split("T")[0]; // YYYY-MM-DD
-    const cacheKey = `daily_challenge_pool:${dateString}`;
+    const cacheKey = `daily_challenge_pool:${institution.id}:${dateString}`;
 
     let globalPool = await getJson<Record<string, number>>(cacheKey);
 
@@ -945,6 +947,7 @@ export class ExamsService {
           const variants = getSubjectSearchVariants(subject);
           const questions = await prisma.question.findMany({
             where: {
+              institutionId: institution.id,
               subject: { in: variants },
               questionType: { in: ["real_past_question", "practice"] },
             },
@@ -1037,7 +1040,7 @@ export class ExamsService {
           const newExam = await tx.exam.create({
             data: {
               userId,
-              institutionId: null,
+              institutionId: institution.id,
               examType: EXAM_TYPES.DAILY_CHALLENGE as any,
               nameScopeKey: scopeKey,
               sessionNumber,
@@ -1096,7 +1099,7 @@ export class ExamsService {
       if (lastTxError?.code === "P2002") {
         const resumedAfterConflict = await this.reuseOrExpireInProgressExam(
           userId,
-          null,
+          institution.id,
           scopeKey,
         );
         if (resumedAfterConflict) {
@@ -1106,6 +1109,7 @@ export class ExamsService {
         const existingChallengeAfterConflict = await prisma.exam.findFirst({
           where: {
             userId,
+            institutionId: institution.id,
             examType: EXAM_TYPES.DAILY_CHALLENGE as any,
             startedAt: { gte: startOfDayGmt1 },
           },
