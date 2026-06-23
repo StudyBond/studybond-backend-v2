@@ -214,7 +214,7 @@ async function main() {
           userId: user.id,
           emailType: EmailType.SUBSCRIPTION_PROMPT,
           to: { email: user.email, name: user.fullName },
-          from: { email: 'hello@studybond.app', name: 'Marvellous' },
+          from: { email: 'hello@mail.studybond.app', name: 'Marvellous' },
           subject: email.subject,
           html: email.html,
           text: email.text,
