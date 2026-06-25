@@ -19,6 +19,7 @@
     "seed:founder": "node scripts/seed-founder.js",
     "send:service-notice": "node scripts/send-service-notice.js",
     "send:free-outreach": "npx tsx src/scripts/broadcast-free-outreach-secret.ts",
+    "send:medicine-outreach": "npx tsx src/scripts/broadcast-medicine-outreach.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "node scripts/prisma-migrate-deploy.js",
