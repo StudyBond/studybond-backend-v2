@@ -444,6 +444,8 @@ function formatExpiryDate(endDate: Date): string {
   });
 }
 
+const PREMIUM_WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/HGHGmxBYOtzDwzOyrb6GVx?s=sh&p=a&ilr=1';
+
 export function buildPremiumActivatedTemplate(
   fullName: string,
   endDate: Date,
@@ -468,6 +470,9 @@ export function buildPremiumActivatedTemplate(
       '• Streak freezes to protect your progress',
       '• Priority access to new features',
       '',
+      'One more thing — we have a private WhatsApp group just for premium members where you can brainstorm and connect with other students who are serious about their preparation.',
+      `Join here: ${PREMIUM_WHATSAPP_GROUP_URL}`,
+      '',
       `You can view your subscription details here: ${settingsUrl}`,
       '',
       'Thank you for choosing StudyBond Premium.',
@@ -487,6 +492,7 @@ export function buildPremiumActivatedTemplate(
           <li>Streak freezes to protect your progress</li>
           <li>Priority access to new features</li>
         </ul>
+        <p style="margin-top: 20px;">One more thing — we have a private WhatsApp group just for premium members where you can brainstorm and connect with other students who are serious about their preparation. <a href="${escapeHtml(PREMIUM_WHATSAPP_GROUP_URL)}" style="color: #1a73e8; text-decoration: underline;">Join here</a>.</p>
         <p style="margin-top: 20px;">
           <a href="${escapeHtml(settingsUrl)}" style="color: #4f46e5; text-decoration: underline;">View your subscription details</a>
         </p>
