@@ -81,13 +81,13 @@ function buildOutreachEmail(fullName: string) {
     '',
     `UI's MBBS departmental cutoff last year was 78.875. That's not a target — that's the floor candidates cleared just to be considered.`,
     '',
-    `With less than 5 weeks left, here's where you should honestly be right now: consistently hitting 80-85+ on your StudyBond mocks, using the real past questions. If you're below that consistently at this stage, that's not a reason to panic — it's useful information. It tells you exactly where the gap is while there's still time to close it.`,
+    `With about 4 weeks left, here's where you should honestly be right now: consistently hitting 80-85+ on your StudyBond mocks, using the real past questions. If you're below that consistently at this stage, that's not a reason to panic — it's useful information. It tells you exactly where the gap is while there's still time to close it.`,
     '',
     `But 80-85 isn't actually the target. Cutoffs don't sit still, and you don't want to be the candidate who scraped past last year's number only to miss this year's. The real number to chase is 90+, consistently — not on a lucky day.`,
     '',
     `One thing that actually moves people from "scoring okay" to "scoring 90+": after every mock, go back through every question — the ones you got wrong AND the ones you guessed right — and understand exactly why the answer is what it is. Most people only review what they missed. The ones who pull ahead review everything.`,
     '',
-    `Five weeks is enough time to close a real gap if you use it deliberately. Open today's mock at studybond.app and see exactly where you stand against that 90+ number.`,
+    `Four weeks is enough time to close a real gap if you use it deliberately. Open today's mock at studybond.app and see exactly where you stand against that 90+ number.`,
     '',
     `— Marvellous`,
     '',
@@ -105,7 +105,7 @@ function buildOutreachEmail(fullName: string) {
       </p>
       
       <p style="font-size: 16px;">
-        With less than 5 weeks left, here's where you should honestly be right now: consistently hitting 80-85+ on your StudyBond mocks, using the real past questions. If you're below that consistently at this stage, that's not a reason to panic — it's useful information. It tells you exactly where the gap is while there's still time to close it.
+        With about 4 weeks left, here's where you should honestly be right now: consistently hitting 80-85+ on your StudyBond mocks, using the real past questions. If you're below that consistently at this stage, that's not a reason to panic — it's useful information. It tells you exactly where the gap is while there's still time to close it.
       </p>
       
       <p style="font-size: 16px;">
@@ -117,7 +117,7 @@ function buildOutreachEmail(fullName: string) {
       </p>
       
       <p style="font-size: 16px;">
-        Five weeks is enough time to close a real gap if you use it deliberately. Open today's mock at <a href="${appUrl}" style="color: #e09040; text-decoration: underline;">studybond.app</a> and see exactly where you stand against that 90+ number.
+        Four weeks is enough time to close a real gap if you use it deliberately. Open today's mock at <a href="${appUrl}" style="color: #e09040; text-decoration: underline;">studybond.app</a> and see exactly where you stand against that 90+ number.
       </p>
       
       <p style="font-size: 16px; margin-bottom: 24px;">— Marvellous</p>
