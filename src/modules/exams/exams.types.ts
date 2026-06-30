@@ -121,6 +121,7 @@ export interface ExamSummary {
     startedAt: string;
     completedAt: string | null;
     timeTakenSeconds: number | null;
+    collaborationSessionCode?: string | null;
 }
 
 /* Paginated exam history response */

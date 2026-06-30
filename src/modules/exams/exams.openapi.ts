@@ -90,7 +90,8 @@ export const examSummarySchema = z.object({
   retakesRemaining: z.number().int().nonnegative(),
   startedAt: isoDateTimeSchema,
   completedAt: isoDateTimeSchema.nullable(),
-  timeTakenSeconds: z.number().int().nullable()
+  timeTakenSeconds: z.number().int().nullable(),
+  collaborationSessionCode: z.string().nullable().optional(),
 }).passthrough();
 
 export const examHistoryPayloadSchema = z.object({

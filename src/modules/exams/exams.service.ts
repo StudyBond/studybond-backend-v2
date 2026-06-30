@@ -1749,6 +1749,11 @@ export class ExamsService {
           startedAt: true,
           completedAt: true,
           timeTakenSeconds: true,
+          collaborationSession: {
+            select: {
+              sessionCode: true,
+            },
+          },
         },
       }),
       prisma.exam.count({ where }),
@@ -1820,6 +1825,8 @@ export class ExamsService {
         startedAt: exam.startedAt.toISOString(),
         completedAt: exam.completedAt?.toISOString() ?? null,
         timeTakenSeconds: exam.timeTakenSeconds,
+        collaborationSessionCode:
+          exam.collaborationSession?.sessionCode ?? null,
       };
     });
 
