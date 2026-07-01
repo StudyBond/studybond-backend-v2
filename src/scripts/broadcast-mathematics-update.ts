@@ -150,7 +150,9 @@ async function main() {
     orderBy: { id: "asc" },
   });
 
-  const eligibleUsers = users.filter((user: { email: string | null }) => Boolean(user.email && user.email.trim()));
+  const eligibleUsers = users.filter((user: { email: string | null }) =>
+    Boolean(user.email && user.email.trim()),
+  );
 
   console.log(`   Found ${eligibleUsers.length} eligible users`);
 
@@ -177,7 +179,9 @@ async function main() {
         ).map((row: { userId: number }) => row.userId),
       );
 
-  const toSend = eligibleUsers.filter((u: { id: number }) => !alreadySent.has(u.id));
+  const toSend = eligibleUsers.filter(
+    (u: { id: number }) => !alreadySent.has(u.id),
+  );
 
   console.log(`   Already sent: ${alreadySent.size}`);
   console.log(`   Remaining: ${toSend.length}`);
