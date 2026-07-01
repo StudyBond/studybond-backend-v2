@@ -140,16 +140,8 @@ async function main() {
   }
   console.log("");
 
-  const whereClause: any = emailFilter
-    ? { email: emailFilter }
-    : {
-        email: {
-          not: null,
-        },
-      };
-
   const users = await prisma.user.findMany({
-    where: whereClause,
+    where: emailFilter ? { email: emailFilter } : {},
     select: {
       id: true,
       email: true,
@@ -158,9 +150,11 @@ async function main() {
     orderBy: { id: "asc" },
   });
 
-  console.log(`   Found ${users.length} eligible users`);
+  const eligibleUsers = users.filter((user: { email: string | null }) => Boolean(user.email && user.email.trim()));
 
-  if (users.length === 0) {
+  console.log(`   Found ${eligibleUsers.length} eligible users`);
+
+  if (eligibleUsers.length === 0) {
     console.log("   No eligible users found. Exiting.");
     process.exit(0);
   }
@@ -183,7 +177,7 @@ async function main() {
         ).map((row: { userId: number }) => row.userId),
       );
 
-  const toSend = users.filter((u: { id: number }) => !alreadySent.has(u.id));
+  const toSend = eligibleUsers.filter((u: { id: number }) => !alreadySent.has(u.id));
 
   console.log(`   Already sent: ${alreadySent.size}`);
   console.log(`   Remaining: ${toSend.length}`);
