@@ -2,8 +2,18 @@ import { EMAIL_CONFIG } from '../../../config/constants';
 import { EmailProviderClient, EmailProviderSendInput, EmailProviderSendResult } from '../email.types';
 import { EmailProviderError } from '../email-provider-error';
 
-function isRetryable(statusCode?: number): boolean {
+function isRetryable(statusCode?: number, payloadCode?: string, message?: string): boolean {
   if (statusCode === undefined) return true;
+  // 402 is Payment Required / Quota Exceeded (not enough credits)
+  // 429 is Too Many Requests
+  if (statusCode === 402 || statusCode === 429) return true;
+  if (payloadCode === 'not_enough_credits' || payloadCode === 'daily_limit') return true;
+  
+  const lowerMsg = (message || '').toLowerCase();
+  if (lowerMsg.includes('daily_limit') || lowerMsg.includes('credit') || lowerMsg.includes('quota')) {
+    return true;
+  }
+
   if (statusCode === 400 || statusCode === 422) return false;
   return true;
 }
@@ -75,7 +85,7 @@ export class BrevoEmailProvider implements EmailProviderClient {
           {
             statusCode: response.status,
             code: payload?.code || 'BREVO_REQUEST_FAILED',
-            retryable: isRetryable(response.status)
+            retryable: isRetryable(response.status, payload?.code, payload?.message || payload?.error)
           }
         );
       }
