@@ -261,6 +261,83 @@ export class ExamsService {
     }
   }
 
+  /**
+   * User-global cleanup: expire ALL stale in-progress exams for a user,
+   * regardless of scope key. This prevents a phantom in-progress exam with
+   * a different subject combination from silently blocking new exam starts.
+   *
+   * Uses per-institution durations so institution-specific configs are honoured.
+   */
+  private async expireAllStaleInProgressExams(
+    userId: number,
+  ): Promise<number> {
+    const inProgressExams = await prisma.exam.findMany({
+      where: {
+        userId,
+        status: EXAM_STATUS.IN_PROGRESS as any,
+      },
+      select: {
+        id: true,
+        institutionId: true,
+        examType: true,
+        subjectsIncluded: true,
+        isCollaboration: true,
+        startedAt: true,
+      },
+    });
+
+    if (inProgressExams.length === 0) {
+      return 0;
+    }
+
+    const now = new Date();
+    const gracePeriod =
+      EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS +
+      EXAM_CONFIG.OFFLINE_SUBMISSION_EXTENDED_GRACE_SECONDS;
+
+    const staleIds: number[] = [];
+
+    for (const exam of inProgressExams) {
+      try {
+        const durationSeconds = await this.getConfiguredExamDurationSeconds(exam);
+        const expiresAt = new Date(
+          exam.startedAt.getTime() + (durationSeconds + gracePeriod) * 1000,
+        );
+        if (now > expiresAt) {
+          staleIds.push(exam.id);
+        }
+      } catch {
+        // Can't resolve config — skip; next cron run or scope-specific
+        // check will handle it.
+      }
+    }
+
+    if (staleIds.length === 0) {
+      return 0;
+    }
+
+    const result = await prisma.exam.updateMany({
+      where: {
+        id: { in: staleIds },
+        status: EXAM_STATUS.IN_PROGRESS as any,
+      },
+      data: {
+        status: EXAM_STATUS.ABANDONED as any,
+        completedAt: new Date(),
+      },
+    });
+
+    if (result.count > 0) {
+      await this.bumpExamHistoryVersion(userId);
+      this.app?.log?.info(
+        { userId, abandonedCount: result.count, examIds: staleIds },
+        "Expired stale in-progress exams for user (cross-scope cleanup)",
+      );
+    }
+
+    return result.count;
+  }
+
   private async enforceStartRateLimit(userId: number): Promise<void> {
     const cache = getCacheAdapter();
     if (!cache.available) return;
@@ -645,6 +722,10 @@ export class ExamsService {
       userId,
       input.institutionCode,
     );
+
+    // Call user-global cleanup first
+    await this.expireAllStaleInProgressExams(userId);
+
     const config =
       await institutionExamConfigService.getActiveConfigForInstitutionId(
         institution.id,
@@ -891,6 +972,9 @@ export class ExamsService {
         () => this.startDailyChallenge(userId, input),
       );
     }
+
+    // Call user-global cleanup first
+    await this.expireAllStaleInProgressExams(userId);
 
     const scopeKey = buildScopeKeyFromExamType(
       EXAM_TYPES.DAILY_CHALLENGE as any,

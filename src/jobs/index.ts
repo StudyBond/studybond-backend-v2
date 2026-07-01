@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import cron from 'node-cron';
-import { ADMIN_ANALYTICS_CONFIG, AUTH_CONFIG, BOOKMARK_CONFIG, MARKETING_CONFIG, NOTIFICATIONS_CONFIG, STREAK_CONFIG, SUBSCRIPTION_ALERT_CONFIG } from '../config/constants';
+import { ADMIN_ANALYTICS_CONFIG, AUTH_CONFIG, BOOKMARK_CONFIG, EXAM_CLEANUP_CONFIG, MARKETING_CONFIG, NOTIFICATIONS_CONFIG, STREAK_CONFIG, SUBSCRIPTION_ALERT_CONFIG } from '../config/constants';
 import { refreshAdminAnalyticsRollups } from './admin-analytics-rollups';
 import { runExpiredBookmarkCleanup } from './bookmark-cleanup';
 import { runStreakReconciliation, runStreakReminderCheck } from './email-reminders';
@@ -8,6 +8,7 @@ import { runMarketingCampaigns } from './marketing-campaigns';
 import { runNotificationMaintenance } from './notification-maintenance';
 import { runPasswordChangeAlertCheck } from './password-change-alerts';
 import { runSubscriptionExpiryCheck } from './subscription-check';
+import { runStaleExamCleanup } from './stale-exam-cleanup';
 import { runSubscriptionAlerts } from './subscription-expiry-alerts';
 import { runWeeklyLeaderboardReset } from './weekly-reset';
 
@@ -100,6 +101,14 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     timezone: JOBS_TIMEZONE
   });
 
+  const staleExamCleanupTask = cron.schedule(EXAM_CLEANUP_CONFIG.STALE_EXAM_CRON, async () => {
+    app.log.info('Running stale in-progress exam cleanup job.');
+    const result = await runStaleExamCleanup();
+    app.log.info(result, 'Stale in-progress exam cleanup job finished.');
+  }, {
+    timezone: JOBS_TIMEZONE
+  });
+
   app.addHook('onClose', async () => {
     subscriptionExpiryTask.stop();
     passwordChangeAlertTask.stop();
@@ -111,6 +120,7 @@ export function setupBackgroundJobs(app: FastifyInstance): void {
     subscriptionAlertTask.stop();
     notificationMaintenanceTask.stop();
     weeklyLeaderboardResetTask.stop();
+    staleExamCleanupTask.stop();
   });
 
   app.log.info({ timezone: JOBS_TIMEZONE }, 'Background jobs scheduled.');

@@ -113,6 +113,12 @@ export const BOOKMARK_CONFIG = {
     EXPIRY_CLEANUP_MAX_BATCHES: parsePositiveInt(process.env.BOOKMARK_EXPIRY_CLEANUP_MAX_BATCHES, 20)
 };
 
+export const EXAM_CLEANUP_CONFIG = {
+    STALE_EXAM_CRON: (process.env.STALE_EXAM_CLEANUP_CRON || '*/15 * * * *').trim(),
+    /** Conservative ceiling: 90 min exam + 90s grace + 5 min offline grace = ~96.5 min */
+    MAX_EXAM_AGE_SECONDS: parsePositiveInt(process.env.STALE_EXAM_MAX_AGE_SECONDS, 90 * 60 + 90 + 300),
+};
+
 export const INSTITUTION_CONFIG = {
     LAUNCH_INSTITUTION_CODE: (process.env.LAUNCH_INSTITUTION_CODE || 'UI').trim().toUpperCase()
 };
