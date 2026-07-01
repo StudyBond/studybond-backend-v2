@@ -78,10 +78,6 @@ function buildUpdateEmail(fullName: string) {
     practiceUrl,
     "",
     "— Marvellous",
-    "",
-    "---",
-    "You are receiving this because you signed up for StudyBond.",
-    `Unsubscribe from marketing emails: https://studybond.app/settings/notifications?unsubscribe=marketing`,
   ].join("\n");
 
   const html = `
@@ -103,11 +99,6 @@ function buildUpdateEmail(fullName: string) {
       </p>
 
       <p style="font-size: 16px; margin-bottom: 24px;">— Marvellous</p>
-
-      <div style="margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 16px; font-size: 12px; color: #9ca3af; font-family: Arial, sans-serif; line-height: 1.4;">
-        You are receiving this because you signed up for StudyBond.<br/>
-        <a href="https://studybond.app/settings/notifications?unsubscribe=marketing" style="color: #6b7280; text-decoration: underline;">Unsubscribe from marketing emails</a>
-      </div>
     </div>
   `;
 
@@ -167,7 +158,7 @@ async function main() {
         (
           await prisma.emailLog.findMany({
             where: {
-              emailType: EmailType.SUBSCRIPTION_PROMPT,
+              emailType: EmailType.SERVICE_NOTICE, // ✅ FIXED: was SUBSCRIPTION_PROMPT
               status: "sent",
               metadata: {
                 path: ["broadcastId"],
@@ -220,7 +211,7 @@ async function main() {
       try {
         const result = await transactionalEmailService.send({
           userId: user.id,
-          emailType: EmailType.SUBSCRIPTION_PROMPT,
+          emailType: EmailType.SERVICE_NOTICE, // ✅ FIXED: was SUBSCRIPTION_PROMPT
           to: { email: user.email, name: user.fullName },
           from: { email: "hello@mail.studybond.app", name: "Marvellous" },
           subject: email.subject,
