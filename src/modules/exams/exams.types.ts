@@ -1,180 +1,179 @@
-import type { ExamErrorCode } from './exams.constants';
-import { Subject, ExamType, ExamStatus } from './exams.constants';
+import type { ExamErrorCode } from "./exams.constants";
+import { Subject, ExamType, ExamStatus } from "./exams.constants";
 export interface StartExamInput {
-    examType?: ExamType;
-    institutionCode?: string;
-    subjects: Subject[];
+  examType?: ExamType;
+  institutionCode?: string;
+  subjects: Subject[];
 }
 
 export interface StartDailyChallengeInput {
-    subjects: Subject[];
+  subjects: Subject[];
 }
 
 export interface AnswerInput {
-    questionId: number;
-    answer: string | null;
-    timeSpentSeconds?: number;
-    isFlagged?: boolean;
+  questionId: number;
+  answer: string | null;
+  timeSpentSeconds?: number;
+  isFlagged?: boolean;
 }
 
 export interface SubmitExamInput {
-    answers: AnswerInput[];
+  answers: AnswerInput[];
 }
 
 export interface ExamHistoryQuery {
-    page?: number;
-    limit?: number;
-    institutionCode?: string;
-    examType?: ExamType;
-    status?: ExamStatus;
+  page?: number;
+  limit?: number;
+  institutionCode?: string;
+  examType?: ExamType;
+  status?: ExamStatus;
 }
 export interface QuestionForClient {
-    id: number;
-    questionText: string;
-    hasImage: boolean;
-    imageUrl: string | null;
-    optionA: string;
-    optionB: string;
-    optionC: string;
-    optionD: string;
-    optionE: string | null;
-    optionAImageUrl: string | null;
-    optionBImageUrl: string | null;
-    optionCImageUrl: string | null;
-    optionDImageUrl: string | null;
-    optionEImageUrl: string | null;
-    parentQuestionText: string | null;
-    parentQuestionImageUrl: string | null;
-    subject: string;
-    topic: string | null;
+  id: number;
+  questionText: string;
+  hasImage: boolean;
+  imageUrl: string | null;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  optionE: string | null;
+  optionAImageUrl: string | null;
+  optionBImageUrl: string | null;
+  optionCImageUrl: string | null;
+  optionDImageUrl: string | null;
+  optionEImageUrl: string | null;
+  parentQuestionText: string | null;
+  parentQuestionImageUrl: string | null;
+  subject: string;
+  topic: string | null;
 }
 
 export interface ExamSessionResponse {
-    examId: number;
-    examType: ExamType;
-    subjects: string[];
-    sessionNumber: number;
-    displayNameLong: string;
-    displayNameShort: string;
-    totalQuestions: number;
-    timeAllowedSeconds: number;
-    startedAt: string;
-    expiresAt: string;
-    questions: QuestionForClient[];
+  examId: number;
+  examType: ExamType;
+  subjects: string[];
+  sessionNumber: number;
+  displayNameLong: string;
+  displayNameShort: string;
+  totalQuestions: number;
+  timeAllowedSeconds: number;
+  startedAt: string;
+  expiresAt: string;
+  questions: QuestionForClient[];
 }
 
 /* Question with answer details (for completed exam review) */
 export interface QuestionWithAnswer extends QuestionForClient {
-    correctAnswer: string;
-    userAnswer: string | null;
-    isCorrect: boolean;
-    timeSpentSeconds: number | null;
-    explanation?: {
-        text: string;
-        imageUrl: string | null;
-        additionalNotes: string | null;
-    };
+  correctAnswer: string;
+  userAnswer: string | null;
+  isCorrect: boolean;
+  timeSpentSeconds: number | null;
+  explanation?: {
+    text: string;
+    imageUrl: string | null;
+    additionalNotes: string | null;
+  };
 }
 
 /* Exam result after submission */
 export interface ExamResultResponse {
-    examId: number;
-    examType: ExamType;
-    subjects: string[];
-    sessionNumber: number;
-    displayNameLong: string;
-    displayNameShort: string;
-    totalQuestions: number;
-    score: number;
-    percentage: number;
-    spEarned: number;
-    spMultiplier: number;
-    timeTakenSeconds: number;
-    isRetake: boolean;
-    attemptNumber: number;
-    startedAt: string;
-    completedAt: string;
-    questions: QuestionWithAnswer[];
-    stats: {
-        totalSp: number;
-        weeklySp: number;
-        currentStreak: number;
-    };
+  examId: number;
+  examType: ExamType;
+  subjects: string[];
+  sessionNumber: number;
+  displayNameLong: string;
+  displayNameShort: string;
+  totalQuestions: number;
+  score: number;
+  percentage: number;
+  spEarned: number;
+  spMultiplier: number;
+  timeTakenSeconds: number;
+  isRetake: boolean;
+  attemptNumber: number;
+  startedAt: string;
+  completedAt: string;
+  questions: QuestionWithAnswer[];
+  stats: {
+    totalSp: number;
+    weeklySp: number;
+    currentStreak: number;
+  };
 }
 
 /* Exam summary for history list */
 export interface ExamSummary {
-    id: number;
-    examType: ExamType;
-    subjects: string[];
-    sessionNumber: number;
-    displayNameLong: string;
-    displayNameShort: string;
-    totalQuestions: number;
-    score: number;
-    percentage: number;
-    spEarned: number;
-    status: ExamStatus;
-    isRetake: boolean;
-    attemptNumber: number;
-    retakesRemaining: number;
-    startedAt: string;
-    completedAt: string | null;
-    timeTakenSeconds: number | null;
-    collaborationSessionCode?: string | null;
+  id: number;
+  examType: ExamType;
+  subjects: string[];
+  sessionNumber: number;
+  displayNameLong: string;
+  displayNameShort: string;
+  totalQuestions: number;
+  score: number;
+  percentage: number;
+  spEarned: number;
+  status: ExamStatus;
+  isRetake: boolean;
+  attemptNumber: number;
+  retakesRemaining: number;
+  startedAt: string;
+  completedAt: string | null;
+  timeTakenSeconds: number | null;
+  collaborationSessionCode?: string | null;
 }
 
 /* Paginated exam history response */
 export interface ExamHistoryResponse {
-    exams: ExamSummary[];
-    pagination: {
-        page: number;
-        limit: number;
-        total: number;
-        totalPages: number;
-    };
-    stats: {
-        totalExams: number;
-        averageScore: number;
-        totalSpEarned: number;
-        bestScore: number;
-    };
+  exams: ExamSummary[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  stats: {
+    totalExams: number;
+    averageScore: number;
+    totalSpEarned: number;
+    bestScore: number;
+  };
 }
-
 
 // INTERNAL TYPES (Service Layer)
 
 /* Question as stored in database with additional metadata */
 export interface QuestionWithMeta {
-    id: number;
-    questionText: string;
-    hasImage: boolean;
-    imageUrl: string | null;
-    optionA: string;
-    optionB: string;
-    optionC: string;
-    optionD: string;
-    optionE: string | null;
-    optionAImageUrl: string | null;
-    optionBImageUrl: string | null;
-    optionCImageUrl: string | null;
-    optionDImageUrl: string | null;
-    optionEImageUrl: string | null;
-    correctAnswer: string;
-    subject: string;
-    topic: string | null;
-    difficultyLevel: string | null;
-    parentQuestionId: number | null;
-    questionType: string;
-    parentQuestionText?: string | null;
-    parentQuestionImageUrl?: string | null;
+  id: number;
+  questionText: string;
+  hasImage: boolean;
+  imageUrl: string | null;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  optionE: string | null;
+  optionAImageUrl: string | null;
+  optionBImageUrl: string | null;
+  optionCImageUrl: string | null;
+  optionDImageUrl: string | null;
+  optionEImageUrl: string | null;
+  correctAnswer: string;
+  subject: string;
+  topic: string | null;
+  difficultyLevel: string | null;
+  parentQuestionId: number | null;
+  questionType: string;
+  parentQuestionText?: string | null;
+  parentQuestionImageUrl?: string | null;
 }
 
 export interface SPCalculation {
-    rawScore: number;
-    percentage: number;
-    multiplier: number;
-    spEarned: number;
+  rawScore: number;
+  percentage: number;
+  multiplier: number;
+  spEarned: number;
 }
 
 /* ---- Topic Blueprint Types ---- */
@@ -187,10 +186,10 @@ export interface SPCalculation {
  * match any named entry in the blueprint (including null topics).
  */
 export interface TopicBlueprintEntry {
-    /** Target number of questions from this topic */
-    quota: number;
-    /** When true, pick passage groups (parentQuestionId) as atomic units */
-    requirePassageGroup?: boolean;
+  /** Target number of questions from this topic */
+  quota: number;
+  /** When true, pick passage groups (parentQuestionId) as atomic units */
+  requirePassageGroup?: boolean;
 }
 
 /**
@@ -206,44 +205,47 @@ export interface TopicBlueprintEntry {
  * }
  * ```
  */
-export type TopicBlueprint = Record<string, Record<string, TopicBlueprintEntry>>;
+export type TopicBlueprint = Record<
+  string,
+  Record<string, TopicBlueprintEntry>
+>;
 
 export interface EligibilityCheck {
-    canTakeExam: boolean;
-    reason?: string;
-    errorCode?: ExamErrorCode;
-    creditsUsed?: number;
-    creditsRemaining?: number;
-    requestedCredits?: number;
-    freeSubjectsTaken?: string[];
+  canTakeExam: boolean;
+  reason?: string;
+  errorCode?: ExamErrorCode;
+  creditsUsed?: number;
+  creditsRemaining?: number;
+  requestedCredits?: number;
+  freeSubjectsTaken?: string[];
 }
 
 export interface RetakeEligibility {
-    canRetake: boolean;
-    attemptNumber: number;
-    retakesRemaining: number;
-    reason?: string;
-    errorCode?: string;
+  canRetake: boolean;
+  attemptNumber: number;
+  retakesRemaining: number;
+  reason?: string;
+  errorCode?: string;
 }
 
 export interface SyncExamResult {
-    examId: number;
-    success: boolean;
-    error?: string;
-    errorCode?: string;
-    data?: ExamResultResponse;
+  examId: number;
+  success: boolean;
+  error?: string;
+  errorCode?: string;
+  data?: ExamResultResponse;
 }
 
 export interface SyncExamsResponse {
-    results: SyncExamResult[];
+  results: SyncExamResult[];
 }
 
 export interface SyncExamItemInput {
-    examId: number;
-    answers: AnswerInput[];
-    idempotencyKey?: string;
+  examId: number;
+  answers: AnswerInput[];
+  idempotencyKey?: string;
 }
 
 export interface SyncExamsInput {
-    submissions: SyncExamItemInput[];
+  submissions: SyncExamItemInput[];
 }

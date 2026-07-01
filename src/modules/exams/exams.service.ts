@@ -159,7 +159,8 @@ export class ExamsService {
     const gracePeriod = EXAM_CONFIG.SUBMISSION_GRACE_PERIOD_SECONDS;
     // Daily challenges = 3 min, max solo = 90 min.  Use a generous ceiling
     // so we never accidentally expire a still-valid exam.
-    const maxDurationSeconds = EXAM_CONFIG.FULL_EXAM_DURATION_SECONDS + gracePeriod;
+    const maxDurationSeconds =
+      EXAM_CONFIG.FULL_EXAM_DURATION_SECONDS + gracePeriod;
     const cutoff = new Date(Date.now() - maxDurationSeconds * 1000);
 
     const expireResult = await prisma.exam.updateMany({
@@ -1135,11 +1136,17 @@ export class ExamsService {
       // Wrap any unexpected DB error with a proper status code
       if (!lastTxError?.statusCode) {
         this.app?.log?.error(
-          { userId, scopeKey, error: lastTxError?.message, code: lastTxError?.code },
+          {
+            userId,
+            scopeKey,
+            error: lastTxError?.message,
+            code: lastTxError?.code,
+          },
           "Unexpected error in startDailyChallenge transaction",
         );
         throw new AppError(
-          lastTxError?.message || "Failed to start daily challenge. Please try again.",
+          lastTxError?.message ||
+            "Failed to start daily challenge. Please try again.",
           500,
         );
       }
@@ -1208,7 +1215,7 @@ export class ExamsService {
         {
           userId,
           routeKey,
-        idempotencyKey,
+          idempotencyKey,
           payload: input,
         },
         () => this.submitExam(userId, examId, input),
@@ -1332,9 +1339,9 @@ export class ExamsService {
       // Finalize exam and score updates in a single transaction to avoid double-submit races.
       let result: {
         userStats: Awaited<ReturnType<typeof updateUserStats>>;
-        collaborationRealtime:
-          | Awaited<ReturnType<typeof finalizeCollaborationSubmission>>
-          | null;
+        collaborationRealtime: Awaited<
+          ReturnType<typeof finalizeCollaborationSubmission>
+        > | null;
       };
       try {
         result = await prisma.$transaction(async (tx: any) => {
@@ -2288,7 +2295,8 @@ export class ExamsService {
           data: result,
         });
       } catch (err: any) {
-        const message = err.message || "An unexpected error occurred during submission.";
+        const message =
+          err.message || "An unexpected error occurred during submission.";
         const errorCode = err instanceof AppError ? err.code : undefined;
 
         results.push({
