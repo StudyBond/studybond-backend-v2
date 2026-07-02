@@ -2,8 +2,16 @@ import { EMAIL_CONFIG } from '../../../config/constants';
 import { EmailProviderClient, EmailProviderSendInput, EmailProviderSendResult } from '../email.types';
 import { EmailProviderError } from '../email-provider-error';
 
-function isRetryable(statusCode?: number): boolean {
+function isRetryable(statusCode?: number, payloadCode?: string, message?: string): boolean {
   if (statusCode === undefined) return true;
+  if (statusCode === 429) return true;
+  if (payloadCode === 'daily_quota_exceeded' || payloadCode === 'rate_limit_exceeded') return true;
+  
+  const lowerMsg = (message || '').toLowerCase();
+  if (lowerMsg.includes('daily_quota') || lowerMsg.includes('rate_limit') || lowerMsg.includes('quota') || lowerMsg.includes('limit exceeded')) {
+    return true;
+  }
+
   if (statusCode === 400 || statusCode === 422) return false;
   return true;
 }
@@ -66,7 +74,7 @@ export class ResendEmailProvider implements EmailProviderClient {
           {
             statusCode: response.status,
             code: payload?.name || payload?.code || 'RESEND_REQUEST_FAILED',
-            retryable: isRetryable(response.status)
+            retryable: isRetryable(response.status, payload?.name || payload?.code, typeof details === 'string' ? details : undefined)
           }
         );
       }

@@ -10,11 +10,20 @@ function isRetryable(statusCode?: number, payloadCode?: string, message?: string
   if (payloadCode === 'not_enough_credits' || payloadCode === 'daily_limit') return true;
   
   const lowerMsg = (message || '').toLowerCase();
-  if (lowerMsg.includes('daily_limit') || lowerMsg.includes('credit') || lowerMsg.includes('quota')) {
+  if (lowerMsg.includes('daily_limit') || lowerMsg.includes('credit') || lowerMsg.includes('quota') || lowerMsg.includes('limit exceeded')) {
     return true;
   }
 
-  if (statusCode === 400 || statusCode === 422) return false;
+  // 400 Bad Request can sometimes be returned with daily_limit or not_enough_credits
+  if (statusCode === 400) {
+    if (payloadCode === 'not_enough_credits' || payloadCode === 'daily_limit') {
+      return true;
+    }
+  } else if (statusCode === 422) {
+    return false;
+  }
+
+  if (statusCode === 400) return false;
   return true;
 }
 

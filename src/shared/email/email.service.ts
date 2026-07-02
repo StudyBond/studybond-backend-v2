@@ -28,8 +28,8 @@ function isDevPreviewAllowed(): boolean {
 
 export class TransactionalEmailService {
   private readonly providers: EmailProviderClient[] = [
-    new BrevoEmailProvider(),
-    new ResendEmailProvider()
+    new ResendEmailProvider(),
+    new BrevoEmailProvider()
   ];
 
   private getMetrics() {
