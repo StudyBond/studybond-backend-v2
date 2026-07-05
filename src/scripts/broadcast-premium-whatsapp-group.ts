@@ -25,7 +25,7 @@ const DRY_RUN = process.env.DRY_RUN !== 'false'; // Default: true (safe)
 
 const WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/HGHGmxBYOtzDwzOyrb6GVx?s=sh&p=a&ilr=1';
 const FROM_ADDRESS = 'hello@mail.studybond.app';
-const FROM_NAME = 'Marvellous from StudyBond';
+const FROM_NAME = 'Marvellous'; // ✅ FIXED: was 'Marvellous from StudyBond' — brand name in sender triggers Promotions
 
 function escapeHtml(value: string): string {
   return value
@@ -39,6 +39,9 @@ function escapeHtml(value: string): string {
 function buildBroadcastEmail(fullName: string) {
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
 
+  // ✅ FIXED: removed all instances of the word "premium" from the body —
+  // repeated use of "premium" is a known Gmail Promotions trigger word
+
   return {
     subject: 'Quick one for you',
     text: [
@@ -46,9 +49,9 @@ function buildBroadcastEmail(fullName: string) {
       '',
       'I wanted to reach out to you directly.',
       '',
-      'We just set up a small WhatsApp group strictly for premium members — a space where you can brainstorm with other serious students, share what is working, ask questions, and connect with people who are actually putting in the work.',
+      'We just set up a small WhatsApp group for serious students — a space where you can brainstorm with others, share what is working, ask questions, and connect with people who are actually putting in the work.',
       '',
-      'It is not a broadcast channel. It is a real conversation space, and it is only for premium users like you.',
+      'It is not a broadcast channel. It is a real conversation space, and access is limited.',
       '',
       `Here is the link to join: ${WHATSAPP_GROUP_URL}`,
       '',
@@ -63,9 +66,9 @@ function buildBroadcastEmail(fullName: string) {
 
         <p style="font-size: 15px; margin: 0 0 16px;">I wanted to reach out to you directly.</p>
 
-        <p style="font-size: 15px; margin: 0 0 16px;">We just set up a small WhatsApp group strictly for premium members — a space where you can brainstorm with other serious students, share what is working, ask questions, and connect with people who are actually putting in the work.</p>
+        <p style="font-size: 15px; margin: 0 0 16px;">We just set up a small WhatsApp group for serious students — a space where you can brainstorm with others, share what is working, ask questions, and connect with people who are actually putting in the work.</p>
 
-        <p style="font-size: 15px; margin: 0 0 16px;">It is not a broadcast channel. It is a real conversation space, and it is only for premium users like you.</p>
+        <p style="font-size: 15px; margin: 0 0 16px;">It is not a broadcast channel. It is a real conversation space, and access is limited.</p>
 
         <p style="font-size: 15px; margin: 0 0 16px;">Here is the link to join: <a href="${escapeHtml(WHATSAPP_GROUP_URL)}" style="color: #1a73e8; text-decoration: underline;">Join the group</a></p>
 
