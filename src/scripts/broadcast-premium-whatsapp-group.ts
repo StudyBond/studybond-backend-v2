@@ -24,7 +24,6 @@ import { BrevoEmailProvider } from "../shared/email/providers/brevo.provider";
 const BROADCAST_ID = "premium_whatsapp_group_invite_v2_2026_07";
 const BATCH_SIZE = 50;
 const BATCH_DELAY_MS = 2000;
-const DRY_RUN = process.env.DRY_RUN !== "false"; // Default: true (safe)
 
 const WHATSAPP_GROUP_URL =
   "https://chat.whatsapp.com/HGHGmxBYOtzDwzOyrb6GVx?s=sh&p=a&ilr=1";
@@ -32,23 +31,31 @@ const FROM_ADDRESS = "hello@mail.studybond.app";
 const FROM_NAME = "Marvellous"; // ✅ No brand name in sender — avoids Promotions trigger
 const brevoProvider = new BrevoEmailProvider();
 
-function parseTargetEmail(args: string[]): string | null {
-  const normalized = args.filter((arg) => arg !== "--");
-  const toFlagIndex = normalized.findIndex(
-    (arg) => arg === "--to" || arg === "--email",
-  );
-  if (toFlagIndex >= 0) {
-    const value = normalized[toFlagIndex + 1];
-    if (value && !value.startsWith("-")) return value;
+function parseArgs(argv: string[]) {
+  const args: Record<string, string | boolean> = {};
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (!token.startsWith("--")) continue;
+
+    const trimmed = token.slice(2);
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex >= 0) {
+      args[trimmed.slice(0, eqIndex)] = trimmed.slice(eqIndex + 1) || true;
+      continue;
+    }
+
+    const next = argv[index + 1];
+    if (!next || next.startsWith("--")) {
+      args[trimmed] = true;
+      continue;
+    }
+
+    args[trimmed] = next;
+    index += 1;
   }
 
-  for (const arg of normalized) {
-    if (arg.startsWith("--to=")) return arg.slice(4);
-    if (arg.startsWith("--email=")) return arg.slice(8);
-    if (!arg.startsWith("-")) return arg;
-  }
-
-  return null;
+  return args;
 }
 
 function escapeHtml(value: string): string {
@@ -174,27 +181,38 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main() {
-  const targetEmail = parseTargetEmail(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2));
+  const dryRun = args.send !== true && process.env.DRY_RUN !== "false";
+  const emailFilter = args.email
+    ? String(args.email).trim().toLowerCase()
+    : null;
 
   console.log(`\n📧 PREMIUM WHATSAPP GROUP BROADCAST (v2)`);
   console.log(
-    `   Mode: ${DRY_RUN ? "🔒 DRY RUN (set DRY_RUN=false to send)" : "🚀 LIVE SEND"}`,
+    `   Mode: ${dryRun ? "🔒 DRY RUN (pass --send or set DRY_RUN=false to send)" : "🚀 LIVE SEND"}`,
   );
   console.log(`   Broadcast ID: ${BROADCAST_ID}`);
   console.log(`   Batch size: ${BATCH_SIZE}`);
   console.log(`   From: ${FROM_NAME} <${FROM_ADDRESS}>`);
-  if (targetEmail) {
-    console.log(`   Target email: ${targetEmail}`);
+  if (emailFilter) {
+    console.log(`   Filter by email: ${emailFilter}`);
   }
   console.log("");
 
   // 1. Find all verified, non-banned premium users
   const premiumUsers = await prisma.user.findMany({
-    where: {
-      isPremium: true,
-      isVerified: true,
-      isBanned: false,
-    },
+    where: emailFilter
+      ? {
+          email: { equals: emailFilter, mode: "insensitive" },
+          isPremium: true,
+          isVerified: true,
+          isBanned: false,
+        }
+      : {
+          isPremium: true,
+          isVerified: true,
+          isBanned: false,
+        },
     select: {
       id: true,
       email: true,
@@ -227,14 +245,9 @@ async function main() {
     ).map((row: { userId: number }) => row.userId),
   );
 
-  const toSend = targetEmail
-    ? premiumUsers.filter(
-        (u: { id: number; email: string }) =>
-          u.email.toLowerCase() === targetEmail.toLowerCase(),
-      )
-    : premiumUsers.filter((u: { id: number }) => !alreadySent.has(u.id));
+  const toSend = premiumUsers.filter((u: { id: number }) => !alreadySent.has(u.id));
 
-  if (targetEmail) {
+  if (emailFilter) {
     console.log(`   Targeted recipient count: ${toSend.length}`);
   } else {
     console.log(`   Already sent: ${alreadySent.size}`);
@@ -243,8 +256,8 @@ async function main() {
   console.log("");
 
   if (toSend.length === 0) {
-    const message = targetEmail
-      ? `   No premium user matched the target email ${targetEmail}. Exiting.`
+    const message = emailFilter
+      ? `   No premium user matched the target email ${emailFilter}. Exiting.`
       : "   ✅ All eligible premium users already received this broadcast. Exiting.";
     console.log(message);
     process.exit(0);
@@ -266,7 +279,7 @@ async function main() {
     for (const user of batch) {
       const email = buildBroadcastEmail(user.fullName);
 
-      if (DRY_RUN) {
+      if (dryRun) {
         console.log(
           `     [DRY] Would send to: ${user.email} (${user.fullName})`,
         );
@@ -299,11 +312,11 @@ async function main() {
   console.log(`   Failed: ${failed}`);
   console.log(`   Total premium users: ${premiumUsers.length}`);
 
-  if (DRY_RUN) {
+  if (dryRun) {
     console.log("");
     console.log("   ⚠️  This was a DRY RUN. No emails were actually sent.");
     console.log(
-      "   To send for real, run: DRY_RUN=false npx tsx src/scripts/broadcast-premium-whatsapp-group.ts",
+      "   To send for real, run: npm run send:premium-whatsapp-group -- --send",
     );
   }
 

@@ -21,6 +21,7 @@
     "send:free-outreach": "npx tsx src/scripts/broadcast-free-outreach-secret.ts",
     "send:medicine-outreach": "npx tsx src/scripts/broadcast-medicine-outreach.ts",
     "send:mathematics-update": "npx tsx src/scripts/broadcast-mathematics-update.ts",
+    "send:premium-whatsapp-group": "npx tsx src/scripts/broadcast-premium-whatsapp-group.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "node scripts/prisma-migrate-deploy.js",
