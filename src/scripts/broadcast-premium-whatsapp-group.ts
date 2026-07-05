@@ -199,14 +199,11 @@ async function main() {
   }
   console.log("");
 
-  // 1. Find all verified, non-banned premium users
+  // 1. Find the target user for testing, or otherwise all verified, non-banned premium users
   const premiumUsers = await prisma.user.findMany({
     where: emailFilter
       ? {
           email: { equals: emailFilter, mode: "insensitive" },
-          isPremium: true,
-          isVerified: true,
-          isBanned: false,
         }
       : {
           isPremium: true,
@@ -221,10 +218,16 @@ async function main() {
     orderBy: { id: "asc" },
   });
 
-  console.log(`   Found ${premiumUsers.length} eligible premium users`);
+  console.log(
+    `   Found ${premiumUsers.length} ${emailFilter ? "matching user" : "eligible premium users"}`,
+  );
 
   if (premiumUsers.length === 0) {
-    console.log("   No premium users found. Exiting.");
+    console.log(
+      emailFilter
+        ? `   No user found for ${emailFilter}. Exiting.`
+        : "   No premium users found. Exiting.",
+    );
     process.exit(0);
   }
 
