@@ -245,7 +245,9 @@ async function main() {
     ).map((row: { userId: number }) => row.userId),
   );
 
-  const toSend = premiumUsers.filter((u: { id: number }) => !alreadySent.has(u.id));
+  const toSend = premiumUsers.filter(
+    (u: { id: number }) => !alreadySent.has(u.id),
+  );
 
   if (emailFilter) {
     console.log(`   Targeted recipient count: ${toSend.length}`);
