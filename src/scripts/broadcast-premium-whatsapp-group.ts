@@ -14,9 +14,10 @@
  */
 
 import 'dotenv/config';
-import { EmailType } from '@prisma/client';
+import { EmailProvider, EmailType } from '@prisma/client';
 import prisma from '../config/database';
-import { transactionalEmailService } from '../shared/email/email.service';
+import { EmailProviderError } from '../shared/email/email-provider-error';
+import { BrevoEmailProvider } from '../shared/email/providers/brevo.provider';
 
 // ✅ New BROADCAST_ID so this resend goes to everyone, including users who
 // received the old version (which landed in Promotions and was likely unseen)
@@ -28,6 +29,24 @@ const DRY_RUN = process.env.DRY_RUN !== 'false'; // Default: true (safe)
 const WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/HGHGmxBYOtzDwzOyrb6GVx?s=sh&p=a&ilr=1';
 const FROM_ADDRESS = 'hello@mail.studybond.app';
 const FROM_NAME = 'Marvellous'; // ✅ No brand name in sender — avoids Promotions trigger
+const brevoProvider = new BrevoEmailProvider();
+
+function parseTargetEmail(args: string[]): string | null {
+  const normalized = args.filter(arg => arg !== '--');
+  const toFlagIndex = normalized.findIndex(arg => arg === '--to' || arg === '--email');
+  if (toFlagIndex >= 0) {
+    const value = normalized[toFlagIndex + 1];
+    if (value && !value.startsWith('-')) return value;
+  }
+
+  for (const arg of normalized) {
+    if (arg.startsWith('--to=')) return arg.slice(4);
+    if (arg.startsWith('--email=')) return arg.slice(8);
+    if (!arg.startsWith('-')) return arg;
+  }
+
+  return null;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -80,16 +99,81 @@ function buildBroadcastEmail(fullName: string) {
   };
 }
 
+async function sendBroadcastEmailViaBrevo(user: { id: number; email: string; fullName: string }, email: { subject: string; html: string; text: string }) {
+  try {
+    const result = await brevoProvider.send({
+      from: { email: FROM_ADDRESS, name: FROM_NAME },
+      to: { email: user.email, name: user.fullName },
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+    });
+
+    await prisma.emailLog.create({
+      data: {
+        userId: user.id,
+        emailType: EmailType.SERVICE_NOTICE,
+        provider: EmailProvider.BREVO,
+        recipientEmail: user.email,
+        subject: email.subject,
+        status: 'sent',
+        emailServiceId: result.messageId,
+        metadata: {
+          broadcastId: BROADCAST_ID,
+          campaignKind: 'premium_whatsapp_group',
+          forcedProvider: 'BREVO',
+        },
+      },
+    });
+
+    return { deliveryMode: 'BREVO' as const, messageId: result.messageId };
+  } catch (error) {
+    const providerError = error instanceof EmailProviderError
+      ? error
+      : new EmailProviderError((error as Error).message || 'Brevo request failed unexpectedly.', {
+          code: 'BREVO_BROADCAST_FAILED',
+          retryable: false,
+        });
+
+    await prisma.emailLog.create({
+      data: {
+        userId: user.id,
+        emailType: EmailType.SERVICE_NOTICE,
+        provider: EmailProvider.BREVO,
+        recipientEmail: user.email,
+        subject: email.subject,
+        status: 'failed',
+        errorMessage: providerError.message,
+        metadata: {
+          broadcastId: BROADCAST_ID,
+          campaignKind: 'premium_whatsapp_group',
+          forcedProvider: 'BREVO',
+          code: providerError.code,
+          statusCode: providerError.statusCode,
+          retryable: providerError.retryable,
+        },
+      },
+    });
+
+    throw providerError;
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function main() {
+  const targetEmail = parseTargetEmail(process.argv.slice(2));
+
   console.log(`\n📧 PREMIUM WHATSAPP GROUP BROADCAST (v2)`);
   console.log(`   Mode: ${DRY_RUN ? '🔒 DRY RUN (set DRY_RUN=false to send)' : '🚀 LIVE SEND'}`);
   console.log(`   Broadcast ID: ${BROADCAST_ID}`);
   console.log(`   Batch size: ${BATCH_SIZE}`);
   console.log(`   From: ${FROM_NAME} <${FROM_ADDRESS}>`);
+  if (targetEmail) {
+    console.log(`   Target email: ${targetEmail}`);
+  }
   console.log('');
 
   // 1. Find all verified, non-banned premium users
@@ -129,14 +213,23 @@ async function main() {
     })).map((row: { userId: number }) => row.userId)
   );
 
-  const toSend = premiumUsers.filter((u: { id: number }) => !alreadySent.has(u.id));
+  const toSend = targetEmail
+    ? premiumUsers.filter((u: { id: number; email: string }) => u.email.toLowerCase() === targetEmail.toLowerCase())
+    : premiumUsers.filter((u: { id: number }) => !alreadySent.has(u.id));
 
-  console.log(`   Already sent: ${alreadySent.size}`);
-  console.log(`   Remaining: ${toSend.length}`);
+  if (targetEmail) {
+    console.log(`   Targeted recipient count: ${toSend.length}`);
+  } else {
+    console.log(`   Already sent: ${alreadySent.size}`);
+    console.log(`   Remaining: ${toSend.length}`);
+  }
   console.log('');
 
   if (toSend.length === 0) {
-    console.log('   ✅ All eligible premium users already received this broadcast. Exiting.');
+    const message = targetEmail
+      ? `   No premium user matched the target email ${targetEmail}. Exiting.`
+      : '   ✅ All eligible premium users already received this broadcast. Exiting.';
+    console.log(message);
     process.exit(0);
   }
 
@@ -161,28 +254,9 @@ async function main() {
       }
 
       try {
-        const result = await transactionalEmailService.send({
-          userId: user.id,
-          emailType: EmailType.SERVICE_NOTICE,
-          to: { email: user.email, name: user.fullName },
-          from: { email: FROM_ADDRESS, name: FROM_NAME },
-          subject: email.subject,
-          html: email.html,
-          text: email.text,
-          metadata: {
-            broadcastId: BROADCAST_ID,
-            campaignKind: 'premium_whatsapp_group',
-          },
-        });
+        const result = await sendBroadcastEmailViaBrevo(user, email);
 
-        if (result.deliveryMode === 'DEV_PREVIEW') {
-          console.log(`     ⚠️  [PREVIEW ONLY - NOT SENT] ${user.email} (API keys missing or local environment dev mode)`);
-        } else if (result.deliveryMode === 'SUPPRESSED') {
-          console.log(`     ⚠️  [SUPPRESSED - NOT SENT] ${user.email} (Email system disabled in settings)`);
-        } else {
-          console.log(`     🚀 [SENT via ${result.deliveryMode}] ${user.email}`);
-        }
-
+        console.log(`     🚀 [SENT via ${result.deliveryMode}] ${user.email}`);
         sent += 1;
       } catch (err) {
         failed += 1;
