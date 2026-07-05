@@ -199,11 +199,14 @@ async function main() {
   }
   console.log("");
 
-  // 1. Find the target user for testing, or otherwise all verified, non-banned premium users
+  // 1. Find all verified, non-banned premium users
   const premiumUsers = await prisma.user.findMany({
     where: emailFilter
       ? {
           email: { equals: emailFilter, mode: "insensitive" },
+          isPremium: true,
+          isVerified: true,
+          isBanned: false,
         }
       : {
           isPremium: true,
@@ -218,37 +221,29 @@ async function main() {
     orderBy: { id: "asc" },
   });
 
-  console.log(
-    `   Found ${premiumUsers.length} ${emailFilter ? "matching user" : "eligible premium users"}`,
-  );
+  console.log(`   Found ${premiumUsers.length} eligible premium users`);
 
   if (premiumUsers.length === 0) {
-    console.log(
-      emailFilter
-        ? `   No user found for ${emailFilter}. Exiting.`
-        : "   No premium users found. Exiting.",
-    );
+    console.log("   No premium users found. Exiting.");
     process.exit(0);
   }
 
   // 2. Check who already received this broadcast (idempotent re-runs)
-  const alreadySent = emailFilter
-    ? new Set<number>()
-    : new Set(
-        (
-          await prisma.emailLog.findMany({
-            where: {
-              emailType: EmailType.SERVICE_NOTICE,
-              status: "sent",
-              metadata: {
-                path: ["broadcastId"],
-                equals: BROADCAST_ID,
-              },
-            },
-            select: { userId: true },
-          })
-        ).map((row: { userId: number }) => row.userId),
-      );
+  const alreadySent = new Set(
+    (
+      await prisma.emailLog.findMany({
+        where: {
+          emailType: EmailType.SERVICE_NOTICE,
+          status: "sent",
+          metadata: {
+            path: ["broadcastId"],
+            equals: BROADCAST_ID,
+          },
+        },
+        select: { userId: true },
+      })
+    ).map((row: { userId: number }) => row.userId),
+  );
 
   const toSend = premiumUsers.filter(
     (u: { id: number }) => !alreadySent.has(u.id),
@@ -264,7 +259,7 @@ async function main() {
 
   if (toSend.length === 0) {
     const message = emailFilter
-      ? `   No matching user was available to send to. Exiting.`
+      ? `   No premium user matched the target email ${emailFilter}. Exiting.`
       : "   ✅ All eligible premium users already received this broadcast. Exiting.";
     console.log(message);
     process.exit(0);
