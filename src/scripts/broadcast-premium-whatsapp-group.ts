@@ -232,25 +232,25 @@ async function main() {
   }
 
   // 2. Check who already received this broadcast (idempotent re-runs)
-  const alreadySent = new Set(
-    (
-      await prisma.emailLog.findMany({
-        where: {
-          emailType: EmailType.SERVICE_NOTICE,
-          status: "sent",
-          metadata: {
-            path: ["broadcastId"],
-            equals: BROADCAST_ID,
-          },
-        },
-        select: { userId: true },
-      })
-    ).map((row: { userId: number }) => row.userId),
-  );
+  const alreadySent = emailFilter
+    ? new Set<number>()
+    : new Set(
+        (
+          await prisma.emailLog.findMany({
+            where: {
+              emailType: EmailType.SERVICE_NOTICE,
+              status: "sent",
+              metadata: {
+                path: ["broadcastId"],
+                equals: BROADCAST_ID,
+              },
+            },
+            select: { userId: true },
+          })
+        ).map((row: { userId: number }) => row.userId),
+      );
 
-  const toSend = premiumUsers.filter(
-    (u: { id: number }) => !alreadySent.has(u.id),
-  );
+  const toSend = premiumUsers.filter((u: { id: number }) => !alreadySent.has(u.id));
 
   if (emailFilter) {
     console.log(`   Targeted recipient count: ${toSend.length}`);
@@ -262,7 +262,7 @@ async function main() {
 
   if (toSend.length === 0) {
     const message = emailFilter
-      ? `   No premium user matched the target email ${emailFilter}. Exiting.`
+      ? `   No matching user was available to send to. Exiting.`
       : "   ✅ All eligible premium users already received this broadcast. Exiting.";
     console.log(message);
     process.exit(0);
