@@ -1,8 +1,8 @@
 /**
- * ONE-OFF BROADCAST: Premium WhatsApp Brainstorming Group Invite
+ * ONE-OFF BROADCAST: Premium WhatsApp Group Invite (v2 — resend with corrected content)
  *
  * Sends a personal invite to all active premium users to join
- * the private WhatsApp brainstorming group.
+ * the private WhatsApp group for brainstorming and 1v1 Duel pairing.
  *
  * Run with: npx tsx src/scripts/broadcast-premium-whatsapp-group.ts
  *
@@ -18,14 +18,16 @@ import { EmailType } from '@prisma/client';
 import prisma from '../config/database';
 import { transactionalEmailService } from '../shared/email/email.service';
 
-const BROADCAST_ID = 'premium_whatsapp_brainstorm_group_2026_06';
+// ✅ New BROADCAST_ID so this resend goes to everyone, including users who
+// received the old version (which landed in Promotions and was likely unseen)
+const BROADCAST_ID = 'premium_whatsapp_group_invite_v2_2026_07';
 const BATCH_SIZE = 50;
 const BATCH_DELAY_MS = 2000;
 const DRY_RUN = process.env.DRY_RUN !== 'false'; // Default: true (safe)
 
 const WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/HGHGmxBYOtzDwzOyrb6GVx?s=sh&p=a&ilr=1';
 const FROM_ADDRESS = 'hello@mail.studybond.app';
-const FROM_NAME = 'Marvellous'; // ✅ FIXED: was 'Marvellous from StudyBond' — brand name in sender triggers Promotions
+const FROM_NAME = 'Marvellous'; // ✅ No brand name in sender — avoids Promotions trigger
 
 function escapeHtml(value: string): string {
   return value
@@ -39,44 +41,42 @@ function escapeHtml(value: string): string {
 function buildBroadcastEmail(fullName: string) {
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
 
-  // ✅ FIXED: removed all instances of the word "premium" from the body —
-  // repeated use of "premium" is a known Gmail Promotions trigger word
+  const text = [
+    `Hey ${firstName},`,
+    '',
+    "Since you're on the paid plan, I want to personally invite you to a WhatsApp group we just set up for paid subscribers.",
+    '',
+    'The idea is simple — a space where you can brainstorm exam strategies with other serious candidates, and also get paired for 1v1 Duels directly in the group instead of waiting to be matched on the app.',
+    '',
+    `Join here: ${WHATSAPP_GROUP_URL}`,
+    '',
+    'See you inside,',
+    'Marvellous',
+    'Founder, StudyBond',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.7; color: #1a1a1a; max-width: 580px; margin: 0 auto; padding: 24px;">
+      <p style="font-size: 15px; margin: 0 0 16px;">Hey ${escapeHtml(firstName)},</p>
+
+      <p style="font-size: 15px; margin: 0 0 16px;">Since you're on the paid plan, I want to personally invite you to a WhatsApp group we just set up for paid subscribers.</p>
+
+      <p style="font-size: 15px; margin: 0 0 16px;">The idea is simple — a space where you can brainstorm exam strategies with other serious candidates, and also get paired for 1v1 Duels directly in the group instead of waiting to be matched on the app.</p>
+
+      <p style="font-size: 15px; margin: 0 0 16px;">Join here: <a href="${escapeHtml(WHATSAPP_GROUP_URL)}" style="color: #1a73e8; text-decoration: underline;">${escapeHtml(WHATSAPP_GROUP_URL)}</a></p>
+
+      <p style="font-size: 15px; margin: 24px 0 0;">
+        See you inside,<br/>
+        Marvellous<br/>
+        <span style="color: #6b7280; font-size: 14px;">Founder, StudyBond</span>
+      </p>
+    </div>
+  `;
 
   return {
-    subject: 'Quick one for you',
-    text: [
-      `Hi ${firstName},`,
-      '',
-      'I wanted to reach out to you directly.',
-      '',
-      'We just set up a small WhatsApp group for serious students — a space where you can brainstorm with others, share what is working, ask questions, and connect with people who are actually putting in the work.',
-      '',
-      'It is not a broadcast channel. It is a real conversation space, and access is limited.',
-      '',
-      `Here is the link to join: ${WHATSAPP_GROUP_URL}`,
-      '',
-      'If you have any ideas on what you would like us to discuss first, just drop it in the group once you join.',
-      '',
-      'Talk soon,',
-      'Marvellous',
-    ].join('\n'),
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.7; color: #1a1a1a; max-width: 580px; margin: 0 auto; padding: 24px;">
-        <p style="font-size: 15px; margin: 0 0 16px;">Hi ${escapeHtml(firstName)},</p>
-
-        <p style="font-size: 15px; margin: 0 0 16px;">I wanted to reach out to you directly.</p>
-
-        <p style="font-size: 15px; margin: 0 0 16px;">We just set up a small WhatsApp group for serious students — a space where you can brainstorm with others, share what is working, ask questions, and connect with people who are actually putting in the work.</p>
-
-        <p style="font-size: 15px; margin: 0 0 16px;">It is not a broadcast channel. It is a real conversation space, and access is limited.</p>
-
-        <p style="font-size: 15px; margin: 0 0 16px;">Here is the link to join: <a href="${escapeHtml(WHATSAPP_GROUP_URL)}" style="color: #1a73e8; text-decoration: underline;">Join the group</a></p>
-
-        <p style="font-size: 15px; margin: 0 0 16px;">If you have any ideas on what you would like us to discuss first, just drop it in the group once you join.</p>
-
-        <p style="font-size: 15px; margin: 24px 0 0;">Talk soon,<br/>Marvellous</p>
-      </div>
-    `
+    subject: 'Private group for paid subscribers',
+    text,
+    html,
   };
 }
 
@@ -85,7 +85,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main() {
-  console.log(`\n📧 PREMIUM WHATSAPP GROUP BROADCAST`);
+  console.log(`\n📧 PREMIUM WHATSAPP GROUP BROADCAST (v2)`);
   console.log(`   Mode: ${DRY_RUN ? '🔒 DRY RUN (set DRY_RUN=false to send)' : '🚀 LIVE SEND'}`);
   console.log(`   Broadcast ID: ${BROADCAST_ID}`);
   console.log(`   Batch size: ${BATCH_SIZE}`);
