@@ -4,6 +4,10 @@ import { optionalInstitutionCodeSchema } from '../../shared/institutions/schema'
 
 const publicIdSchema = z.string().min(1).max(512).nullable().optional();
 
+function isFilledString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 function validateImagePair(
   payload: Record<string, unknown>,
   ctx: z.RefinementCtx,
@@ -43,6 +47,44 @@ function withImagePairValidation<T extends z.ZodObject<any>>(schema: T): T {
   }) as T;
 }
 
+function validateQuestionOptions(payload: Record<string, unknown>, ctx: z.RefinementCtx) {
+  const optionFields = ['optionA', 'optionB', 'optionC', 'optionD'] as const;
+  const hasVisibleOption = optionFields.some((field) => isFilledString(payload[field]));
+  const hasCorrectAnswer = isFilledString(payload.correctAnswer);
+  const isChildQuestion = payload.parentQuestionId != null;
+
+  if (!isChildQuestion && !hasVisibleOption && !hasCorrectAnswer) {
+    return;
+  }
+
+  if (!hasVisibleOption && !isChildQuestion && hasCorrectAnswer) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['correctAnswer'],
+      message: 'Correct answer should be omitted when no answer options are provided.'
+    });
+    return;
+  }
+
+  for (const field of optionFields) {
+    if (!isFilledString(payload[field])) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: `${field} is required when this question has answer choices or is a child question.`
+      });
+    }
+  }
+
+  if (!hasCorrectAnswer) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['correctAnswer'],
+      message: 'Correct answer is required when this question has answer choices or is a child question.'
+    });
+  }
+}
+
 export const createQuestionSchema = withImagePairValidation(z.object({
   institutionCode: optionalInstitutionCodeSchema,
   questionText: z.string().min(1, 'Question text is required'),
@@ -50,10 +92,10 @@ export const createQuestionSchema = withImagePairValidation(z.object({
   imageUrl: z.string().url().nullable().optional(),
   imagePublicId: publicIdSchema,
 
-  optionA: z.string().min(1, 'Option A is required'),
-  optionB: z.string().min(1, 'Option B is required'),
-  optionC: z.string().min(1, 'Option C is required'),
-  optionD: z.string().min(1, 'Option D is required'),
+  optionA: z.string().optional(),
+  optionB: z.string().optional(),
+  optionC: z.string().optional(),
+  optionD: z.string().optional(),
   optionE: z.string().nullable().optional(),
 
   optionAImageUrl: z.string().url().nullable().optional(),
@@ -69,7 +111,7 @@ export const createQuestionSchema = withImagePairValidation(z.object({
 
   correctAnswer: z.enum(['A', 'B', 'C', 'D', 'E'], {
     message: 'Correct answer must be A, B, C, D, or E'
-  }),
+  }).optional(),
 
   subject: z.string().min(1, 'Subject is required'),
   topic: z.string().nullable().optional(),
@@ -84,7 +126,7 @@ export const createQuestionSchema = withImagePairValidation(z.object({
   explanationImageUrl: z.string().url().nullable().optional(),
   explanationImagePublicId: publicIdSchema,
   additionalNotes: z.string().nullable().optional()
-}));
+}).superRefine(validateQuestionOptions));
 
 export const updateQuestionSchema = withImagePairValidation(z.object({
   institutionCode: optionalInstitutionCodeSchema,
@@ -93,10 +135,10 @@ export const updateQuestionSchema = withImagePairValidation(z.object({
   imageUrl: z.string().url().nullable().optional(),
   imagePublicId: publicIdSchema,
 
-  optionA: z.string().min(1, 'Option A is required').optional(),
-  optionB: z.string().min(1, 'Option B is required').optional(),
-  optionC: z.string().min(1, 'Option C is required').optional(),
-  optionD: z.string().min(1, 'Option D is required').optional(),
+  optionA: z.string().optional(),
+  optionB: z.string().optional(),
+  optionC: z.string().optional(),
+  optionD: z.string().optional(),
   optionE: z.string().nullable().optional(),
 
   optionAImageUrl: z.string().url().nullable().optional(),
@@ -127,7 +169,7 @@ export const updateQuestionSchema = withImagePairValidation(z.object({
   explanationImageUrl: z.string().url().nullable().optional(),
   explanationImagePublicId: publicIdSchema,
   additionalNotes: z.string().nullable().optional()
-}).refine((payload) => Object.keys(payload).length > 0, {
+}).superRefine(validateQuestionOptions).refine((payload) => Object.keys(payload).length > 0, {
   message: 'Provide at least one field to update.'
 }));
 

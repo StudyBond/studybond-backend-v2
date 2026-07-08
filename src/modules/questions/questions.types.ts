@@ -6,10 +6,10 @@ export interface CreateQuestionInput {
     imagePublicId?: string | null;
 
     
-    optionA: string;
-    optionB: string;
-    optionC: string;
-    optionD: string;
+    optionA?: string | null;
+    optionB?: string | null;
+    optionC?: string | null;
+    optionD?: string | null;
     optionE?: string | null;
 
     
@@ -24,7 +24,7 @@ export interface CreateQuestionInput {
     optionEImageUrl?: string | null;
     optionEImagePublicId?: string | null;
 
-    correctAnswer: 'A' | 'B' | 'C' | 'D' | 'E';
+    correctAnswer?: 'A' | 'B' | 'C' | 'D' | 'E';
 
     
     subject: string;

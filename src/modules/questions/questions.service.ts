@@ -117,10 +117,10 @@ export class QuestionsService {
             imageUrl: mediaPlan.questionData.imageUrl,
             imagePublicId: mediaPlan.questionData.imagePublicId,
 
-            optionA: input.optionA,
-            optionB: input.optionB,
-            optionC: input.optionC,
-            optionD: input.optionD,
+            optionA: input.optionA ?? '',
+            optionB: input.optionB ?? '',
+            optionC: input.optionC ?? '',
+            optionD: input.optionD ?? '',
             optionE: input.optionE,
 
             optionAImageUrl: mediaPlan.questionData.optionAImageUrl,
@@ -134,7 +134,7 @@ export class QuestionsService {
             optionEImageUrl: mediaPlan.questionData.optionEImageUrl,
             optionEImagePublicId: mediaPlan.questionData.optionEImagePublicId,
 
-            correctAnswer: input.correctAnswer,
+            correctAnswer: input.correctAnswer ?? '',
 
             subject: normalizedSubject,
             topic: input.topic,
