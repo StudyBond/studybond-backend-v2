@@ -16,6 +16,7 @@ import {
 import {
   cleanupQuestionAssets,
   resolveManagedQuestionAsset,
+  normalizeTextImageUrls,
 } from "./question-assets";
 import { institutionContextService } from "../../shared/institutions/context";
 import { normalizeSubjectLabel } from "../../shared/utils/subjects";
@@ -425,10 +426,10 @@ async function prepareQuestionInsert(
     year: question.year ?? null,
     explanation: hasExplanationContent
       ? {
-          explanationText: question.explanationText || "",
+          explanationText: normalizeTextImageUrls(question.explanationText) || "",
           explanationImageUrl: explanationImage.url,
           explanationImagePublicId: explanationImage.publicId,
-          additionalNotes: question.additionalNotes ?? null,
+          additionalNotes: normalizeTextImageUrls(question.additionalNotes) ?? null,
         }
       : null,
     uploadedPublicIds,

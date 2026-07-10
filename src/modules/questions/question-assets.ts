@@ -84,6 +84,35 @@ export function normalizeImageUrl(url: string | null): string | null {
   return url;
 }
 
+/**
+ * Normalise Google-Drive image URLs that appear **inside** free-text fields
+ * (e.g. explanationText, additionalNotes).
+ *
+ * Matches markdown image syntax `![alt](url)` as well as bare URLs on their
+ * own line, and runs each URL through `normalizeImageUrl`.
+ */
+export function normalizeTextImageUrls(text: string | null | undefined): string | null {
+  if (!text) return text as null;
+
+  // 1. Markdown images: ![...](https://drive.google.com/...)
+  let result = text.replace(
+    /!\[([^\]]*)\]\((https?:\/\/drive\.google\.com\/[^)]+)\)/g,
+    (_match, alt, url) => {
+      const normalized = normalizeImageUrl(url);
+      return `![${alt}](${normalized})`;
+    },
+  );
+
+  // 2. Bare Google Drive URLs (not already inside markdown image syntax)
+  //    Match URLs that are NOT preceded by `](`
+  result = result.replace(
+    /(?<!\]\()(https?:\/\/drive\.google\.com\/\S+)/g,
+    (url) => normalizeImageUrl(url) ?? url,
+  );
+
+  return result;
+}
+
 export async function resolveManagedQuestionAsset(
   input: ManagedQuestionAssetInput,
   kind: QuestionAssetKind

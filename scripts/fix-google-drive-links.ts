@@ -1,7 +1,7 @@
 
 import 'dotenv/config';
 import { prisma } from '../src/config/database';
-import { normalizeImageUrl } from '../src/modules/questions/question-assets';
+import { normalizeImageUrl, normalizeTextImageUrls } from '../src/modules/questions/question-assets';
 
 async function main() {
   console.log('--- Starting Google Drive Link Repair ---');
@@ -38,15 +38,15 @@ async function main() {
     console.log(`  > Repaired Question ID: ${q.id}`);
   }
 
-  // 2. Repair Explanations
-  console.log('\nChecking Explanations...');
+  // 2. Repair Explanation image URLs
+  console.log('\nChecking Explanation image URLs...');
   const explanations = await prisma.explanation.findMany({
     where: {
       explanationImageUrl: { contains: 'drive.google.com' }
     }
   });
 
-  console.log(`Found ${explanations.length} explanations to repair.`);
+  console.log(`Found ${explanations.length} explanation images to repair.`);
 
   for (const exp of explanations) {
     await prisma.explanation.update({
@@ -55,7 +55,31 @@ async function main() {
         explanationImageUrl: normalizeImageUrl(exp.explanationImageUrl)
       }
     });
-    console.log(`  > Repaired Explanation for Question ID: ${exp.questionId}`);
+    console.log(`  > Repaired Explanation image for Question ID: ${exp.questionId}`);
+  }
+
+  // 3. Repair Google Drive URLs embedded inside explanationText and additionalNotes
+  console.log('\nChecking Explanation text content for embedded Drive links...');
+  const textExplanations = await prisma.explanation.findMany({
+    where: {
+      OR: [
+        { explanationText: { contains: 'drive.google.com' } },
+        { additionalNotes: { contains: 'drive.google.com' } },
+      ]
+    }
+  });
+
+  console.log(`Found ${textExplanations.length} explanation texts to repair.`);
+
+  for (const exp of textExplanations) {
+    await prisma.explanation.update({
+      where: { id: exp.id },
+      data: {
+        explanationText: normalizeTextImageUrls(exp.explanationText) ?? exp.explanationText,
+        additionalNotes: normalizeTextImageUrls(exp.additionalNotes) ?? exp.additionalNotes,
+      }
+    });
+    console.log(`  > Repaired Explanation text for Question ID: ${exp.questionId}`);
   }
 
   console.log('\n--- Repair Completed Successfully ---');

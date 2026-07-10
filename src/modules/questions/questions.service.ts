@@ -6,6 +6,7 @@ import {
   type QuestionAssetKind,
   resolveManagedQuestionAsset,
   uploadQuestionAssetFile,
+  normalizeTextImageUrls,
 } from "./question-assets";
 import {
   CreateQuestionInput,
@@ -496,10 +497,10 @@ export class QuestionsService {
       questionData,
       explanationData: hasExplanationContent
         ? {
-            explanationText: input.explanationText || "",
+            explanationText: normalizeTextImageUrls(input.explanationText) || "",
             explanationImageUrl: resolvedExplanationAsset.url,
             explanationImagePublicId: resolvedExplanationAsset.publicId,
-            additionalNotes: input.additionalNotes ?? null,
+            additionalNotes: normalizeTextImageUrls(input.additionalNotes) ?? null,
           }
         : null,
       uploadedPublicIds,
@@ -635,10 +636,10 @@ export class QuestionsService {
     }
 
     const payload = {
-      explanationText,
+      explanationText: normalizeTextImageUrls(explanationText) ?? explanationText,
       explanationImageUrl: resolvedExplanationImageUrl,
       explanationImagePublicId: resolvedExplanationImagePublicId,
-      additionalNotes,
+      additionalNotes: normalizeTextImageUrls(additionalNotes) ?? additionalNotes,
     };
 
     if (currentExplanation) {
