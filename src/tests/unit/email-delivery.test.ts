@@ -48,11 +48,11 @@ describe('transactional email service', () => {
     process.env = { ...originalEnv };
   });
 
-  it('uses Brevo as the primary provider when Brevo succeeds', async () => {
+  it('uses Resend as the primary provider when Resend succeeds', async () => {
     process.env.BREVO_API_KEY = 'brevo-key';
     process.env.RESEND_API_KEY = 'resend-key';
 
-    const fetchMock = vi.fn(async () => createJsonResponse(201, { messageId: 'brevo-123' }));
+    const fetchMock = vi.fn(async () => createJsonResponse(200, { id: 'resend-123' }));
     vi.stubGlobal('fetch', fetchMock);
 
     const { prisma, transactionalEmailService } = await loadEmailService();
@@ -68,25 +68,25 @@ describe('transactional email service', () => {
       isCritical: true
     });
 
-    expect(result.deliveryMode).toBe('BREVO');
-    expect(result.provider).toBe('BREVO');
+    expect(result.deliveryMode).toBe('RESEND');
+    expect(result.provider).toBe('RESEND');
     expect(result.fallbackUsed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(emailLogSpy).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
-        provider: 'BREVO',
+        provider: 'RESEND',
         status: 'sent'
       })
     }));
   });
 
-  it('falls back to Resend when Brevo fails with a retryable error', async () => {
+  it('falls back to Brevo when Resend fails with a retryable error', async () => {
     process.env.BREVO_API_KEY = 'brevo-key';
     process.env.RESEND_API_KEY = 'resend-key';
 
     const fetchMock = vi.fn()
       .mockImplementationOnce(async () => createJsonResponse(503, { code: 'temporarily_unavailable', message: 'down' }))
-      .mockImplementationOnce(async () => createJsonResponse(200, { id: 'resend-456' }));
+      .mockImplementationOnce(async () => createJsonResponse(201, { messageId: 'brevo-456' }));
     vi.stubGlobal('fetch', fetchMock);
 
     const { prisma, transactionalEmailService } = await loadEmailService();
@@ -102,20 +102,20 @@ describe('transactional email service', () => {
       isCritical: true
     });
 
-    expect(result.deliveryMode).toBe('RESEND');
-    expect(result.provider).toBe('RESEND');
+    expect(result.deliveryMode).toBe('BREVO');
+    expect(result.provider).toBe('BREVO');
     expect(result.fallbackUsed).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(emailLogSpy).toHaveBeenCalledTimes(2);
     expect(emailLogSpy.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       data: expect.objectContaining({
-        provider: 'BREVO',
+        provider: 'RESEND',
         status: 'failed'
       })
     }));
     expect(emailLogSpy.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
       data: expect.objectContaining({
-        provider: 'RESEND',
+        provider: 'BREVO',
         status: 'sent'
       })
     }));

@@ -44,7 +44,8 @@ mocks.cleanupQuestionAssets.mockImplementation(async () => undefined);
 
 vi.mock('../../modules/questions/question-assets', () => ({
   resolveManagedQuestionAsset: mocks.resolveManagedQuestionAsset,
-  cleanupQuestionAssets: mocks.cleanupQuestionAssets
+  cleanupQuestionAssets: mocks.cleanupQuestionAssets,
+  normalizeTextImageUrls: vi.fn((text) => text)
 }));
 
 mocks.resolveByCode.mockImplementation(async () => ({
