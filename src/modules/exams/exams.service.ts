@@ -101,6 +101,7 @@ export class ExamsService {
         weeklySp: result.stats.weeklySp,
         currentStreak: result.stats.currentStreak,
       },
+      autoBookmarkResult: result.autoBookmarkResult ?? null,
     };
   }
 
@@ -1615,17 +1616,27 @@ export class ExamsService {
         }
       }
 
-      // Handle auto-bookmarking for flagged questions (non-critical, background)
+      // Handle auto-bookmarking for flagged questions (awaited to return stats)
       const flaggedIds = input.answers
         .filter((a: any) => a.isFlagged)
         .map((a: any) => a.questionId);
 
+      let autoBookmarkResult: {
+        attemptedCount: number;
+        savedCount: number;
+        limitReached: boolean;
+      } | null = null;
+
       if (flaggedIds.length > 0) {
-        bookmarksService
-          .createBulkBookmarksFromExam(userId, flaggedIds, examId)
-          .catch((err) => {
-            console.error("[ExamsService] Auto-bookmark failed:", err);
-          });
+        try {
+          autoBookmarkResult = await bookmarksService.createBulkBookmarksFromExam(
+            userId,
+            flaggedIds,
+            examId,
+          );
+        } catch (err) {
+          console.error("[ExamsService] Auto-bookmark failed:", err);
+        }
       }
 
       if (
@@ -1675,6 +1686,7 @@ export class ExamsService {
         completedAt: now.toISOString(),
         questions: questionsWithAnswers,
         stats: result.userStats,
+        autoBookmarkResult,
       });
     } finally {
       await this.releaseSubmitLock(examId, submitLockOwner);

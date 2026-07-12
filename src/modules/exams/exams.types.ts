@@ -100,6 +100,11 @@ export interface ExamResultResponse {
     weeklySp: number;
     currentStreak: number;
   };
+  autoBookmarkResult?: {
+    attemptedCount: number;
+    savedCount: number;
+    limitReached: boolean;
+  } | null;
 }
 
 /* Exam summary for history list */

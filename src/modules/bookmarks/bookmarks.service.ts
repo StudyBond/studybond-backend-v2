@@ -426,8 +426,14 @@ export class BookmarksService {
    * Automatically bookmarks a list of questions flagged during an exam.
    * Silently respects user limits and skips duplicates.
    */
-  async createBulkBookmarksFromExam(userId: number, questionIds: number[], examId: number) {
-    if (questionIds.length === 0) return;
+  async createBulkBookmarksFromExam(
+    userId: number,
+    questionIds: number[],
+    examId: number,
+  ): Promise<{ attemptedCount: number; savedCount: number; limitReached: boolean }> {
+    if (questionIds.length === 0) {
+      return { attemptedCount: 0, savedCount: 0, limitReached: false };
+    }
 
     const now = new Date();
     const expiryDate = buildExpiryDate(now);
@@ -440,7 +446,9 @@ export class BookmarksService {
         where: { id: userId },
         select: { id: true, isPremium: true }
       });
-      if (!user) return;
+      if (!user) {
+        return { attemptedCount: questionIds.length, savedCount: 0, limitReached: false };
+      }
 
       // 2. Cleanup expired bookmarks first
       await this.purgeExpiredBookmarksTx(tx, userId, now);
@@ -455,7 +463,6 @@ export class BookmarksService {
         : BOOKMARK_LIMITS.FREE_USER_MAX_BOOKMARKS;
 
       const remainingSlots = Math.max(0, maxAllowed - currentCount);
-      if (remainingSlots === 0) return;
 
       // 4. Filter out questions already bookmarked and active
       const existing = await tx.bookmarkedQuestion.findMany({
@@ -473,7 +480,13 @@ export class BookmarksService {
       const existingIds = new Set(existing.map(e => e.questionId));
       const newQuestionIds = questionIds.filter(id => !existingIds.has(id));
 
-      if (newQuestionIds.length === 0) return;
+      if (newQuestionIds.length === 0) {
+        return { attemptedCount: questionIds.length, savedCount: 0, limitReached: remainingSlots === 0 };
+      }
+
+      if (remainingSlots === 0) {
+        return { attemptedCount: questionIds.length, savedCount: 0, limitReached: true };
+      }
 
       // 5. Take only what fits in the remaining slots
       const toInsert = newQuestionIds.slice(0, remainingSlots);
@@ -488,6 +501,12 @@ export class BookmarksService {
         })),
         skipDuplicates: true
       });
+
+      return {
+        attemptedCount: questionIds.length,
+        savedCount: toInsert.length,
+        limitReached: newQuestionIds.length > remainingSlots
+      };
     });
   }
 }
