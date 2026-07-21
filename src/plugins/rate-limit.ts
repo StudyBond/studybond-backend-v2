@@ -1,27 +1,33 @@
 import { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import fastifyRateLimit from "@fastify/rate-limit";
+import jwt from "jsonwebtoken";
 import { createResilientRateLimitStore } from "./resilient-rate-limit-store";
 
 /**
  * Extracts a per-user rate limit key.
  *
- * For authenticated requests the key is the user's numeric ID
- * (from the JWT payload set by @fastify/jwt).  This ensures that
- * thousands of users behind the same CGNAT IP each get their own
- * rate-limit bucket instead of sharing a single one.
+ * For authenticated requests, parses the Bearer token safely using
+ * jwt.decode to obtain userId without touching Fastify's throwing getters.
+ * This ensures thousands of users behind the same CGNAT IP each get their
+ * own rate-limit bucket instead of sharing one.
  *
- * For anonymous/unauthenticated requests we fall back to the
- * client IP — but with a much higher ceiling than before.
+ * For anonymous requests, falls back to request.ip.
  */
 function rateLimitKeyGenerator(request: FastifyRequest): string {
   try {
-    const user = request.user as { userId?: number } | undefined;
-    if (user?.userId) {
-      return `usr:${user.userId}`;
+    const authHeader = request.headers.authorization;
+    if (authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.slice(7).trim();
+      if (token) {
+        const decoded = jwt.decode(token) as { userId?: number } | null;
+        if (decoded?.userId) {
+          return `usr:${decoded.userId}`;
+        }
+      }
     }
   } catch {
-    // request.user is not populated yet (anonymous endpoint) — fall through
+    // Fallback to IP on any token parsing error
   }
 
   return request.ip;
@@ -29,9 +35,7 @@ function rateLimitKeyGenerator(request: FastifyRequest): string {
 
 async function rateLimitPlugin(app: FastifyInstance) {
   const options: any = {
-    // ── Global ceiling ──────────────────────────────────────────────
-    // 600 requests per 15 min per *user* (authenticated) or per *IP*
-    // (anonymous). Individual routes can override via config.rateLimit.
+    // Global ceiling: 600 requests per 15 min per user/IP
     max: parseInt(process.env.RATE_LIMIT_MAX || "600", 10),
     timeWindow: process.env.RATE_LIMIT_WINDOW || "15m",
 
@@ -42,12 +46,10 @@ async function rateLimitPlugin(app: FastifyInstance) {
     keyGenerator: rateLimitKeyGenerator,
 
     skip: (request: any) => {
-      // Skip if marked by beforeHandler
       if ((request as any).bypass_rate_limit === true) {
         return true;
       }
 
-      // Skip rate limiting for system endpoints (health checks, metrics, etc.)
       const url = request.url || request.originalUrl || "";
       const pathname = url.split("?")[0];
 

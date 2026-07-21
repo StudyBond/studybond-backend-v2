@@ -8,21 +8,15 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
 
     // ── Connection pool sizing ──────────────────────────────────────
-    // 20 is safe for Supabase free (60 max) and Render starter (97 max).
-    // Increase to 30-50 if you upgrade your DB plan.
+    // 20 connections max (safe for Supabase Free Tier 60 max).
     max: parseInt(process.env.PG_POOL_MAX || '20', 10),
 
     // ── Timeouts ────────────────────────────────────────────────────
-    // Fail fast instead of queuing forever when the pool is saturated.
-    connectionTimeoutMillis: parseInt(process.env.PG_CONNECT_TIMEOUT_MS || '5000', 10),
+    // Allow up to 15s for Supabase pooler connections (handles cold starts).
+    connectionTimeoutMillis: parseInt(process.env.PG_CONNECT_TIMEOUT_MS || '15000', 10),
 
-    // Release idle connections after 30s to free DB slots for other
-    // services (workers, jobs) sharing the same Postgres instance.
+    // Release idle connections after 30s.
     idleTimeoutMillis: parseInt(process.env.PG_IDLE_TIMEOUT_MS || '30000', 10),
-
-    // Kill any query running longer than 15s — prevents a single
-    // runaway query from holding a connection slot indefinitely.
-    statement_timeout: parseInt(process.env.PG_STATEMENT_TIMEOUT_MS || '15000', 10),
 });
 
 const adapter = new PrismaPg(pool);
