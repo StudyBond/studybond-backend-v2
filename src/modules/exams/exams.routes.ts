@@ -22,6 +22,12 @@ export async function examsRoutes(app: FastifyInstance) {
      */
     app.post('/start', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 30,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Start a new exam',
@@ -38,6 +44,12 @@ export async function examsRoutes(app: FastifyInstance) {
     /* POST /exams/daily-challenge/start - Start a global daily challenge */
     app.post('/daily-challenge/start', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 20,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Start global daily challenge',
@@ -62,6 +74,12 @@ export async function examsRoutes(app: FastifyInstance) {
     /* GET /exams/eligibility - Check user's exam limits and credits */
     app.get('/eligibility', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 120,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Check exam eligibility',
@@ -76,6 +94,12 @@ export async function examsRoutes(app: FastifyInstance) {
     /* POST /exams/:examId/submit - Submit exam answers and get results */
     app.post('/:examId/submit', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 30,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Submit exam answers',
@@ -93,6 +117,12 @@ export async function examsRoutes(app: FastifyInstance) {
     /* GET /exams/:examId/questions - Get questions for an in-progress exam (for resuming) */
     app.get('/:examId/questions', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 120,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Get exam questions',
@@ -108,6 +138,12 @@ export async function examsRoutes(app: FastifyInstance) {
     /* GET /exams/history - Get user's exam history with pagination */
     app.get('/history', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 120,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Get exam history',
@@ -123,6 +159,12 @@ export async function examsRoutes(app: FastifyInstance) {
     /* GET /exams/:examId - Get full exam details (completed exams only) */
     app.get('/:examId', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 120,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Get exam details',
@@ -138,6 +180,12 @@ export async function examsRoutes(app: FastifyInstance) {
     /* POST /exams/:examId/retake - Create a retake of an existing exam */
     app.post('/:examId/retake', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 30,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Retake exam',
@@ -154,6 +202,12 @@ export async function examsRoutes(app: FastifyInstance) {
     /* POST /exams/:examId/abandon - Abandon an in-progress exam */
     app.post('/:examId/abandon', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 30,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Abandon exam',
@@ -169,6 +223,12 @@ export async function examsRoutes(app: FastifyInstance) {
     /* POST /exams/sync - Sync a batch of offline submissions */
     app.post('/sync', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 30,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Exams'],
             summary: 'Sync offline exams',

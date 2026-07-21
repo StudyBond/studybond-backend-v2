@@ -10,6 +10,12 @@ export async function studyRoutes(app: FastifyInstance) {
     /** POST /study/start — Start a new study session */
     app.post('/start', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 30,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Study Mode'],
             summary: 'Start a new study session',
@@ -25,6 +31,12 @@ export async function studyRoutes(app: FastifyInstance) {
     /** POST /study/:examId/complete — Complete a study session */
     app.post('/:examId/complete', {
         preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 30,
+                timeWindow: '1 minute'
+            }
+        },
         schema: {
             tags: ['Study Mode'],
             summary: 'Complete a study session',
