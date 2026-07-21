@@ -21,7 +21,7 @@ export interface ResolvedInstitutionContext {
   source: 'explicit' | 'user_target' | 'launch_default';
 }
 
-const institutionSelect = {
+const institutionSelectWithStudy = {
   id: true,
   code: true,
   name: true,
@@ -33,13 +33,20 @@ const institutionSelect = {
   }
 } as const;
 
+const institutionSelectFallback = {
+  id: true,
+  code: true,
+  name: true,
+  slug: true
+} as const;
+
 function formatInstitution(inst: any): Omit<ResolvedInstitutionContext, 'source'> {
   return {
     id: inst.id,
     code: inst.code,
     name: inst.name,
     slug: inst.slug,
-    studyModeEnabled: inst.examConfigs?.[0]?.studyModeEnabled ?? false,
+    studyModeEnabled: Boolean(inst.examConfigs?.[0]?.studyModeEnabled ?? false),
   };
 }
 
@@ -47,13 +54,19 @@ async function findActiveInstitutionByCode(
   db: InstitutionClient,
   code: string
 ): Promise<Omit<ResolvedInstitutionContext, 'source'> | null> {
-  const institution = await db.institution.findFirst({
-    where: {
-      code,
-      isActive: true
-    },
-    select: institutionSelect
-  });
+  let institution: any = null;
+  try {
+    institution = await db.institution.findFirst({
+      where: { code, isActive: true },
+      select: institutionSelectWithStudy
+    });
+  } catch {
+    // If studyModeEnabled column is missing in DB schema, fallback gracefully
+    institution = await db.institution.findFirst({
+      where: { code, isActive: true },
+      select: institutionSelectFallback
+    });
+  }
 
   if (!institution) {
     return null;
@@ -66,13 +79,19 @@ async function findActiveInstitutionById(
   db: InstitutionClient,
   institutionId: number
 ): Promise<Omit<ResolvedInstitutionContext, 'source'> | null> {
-  const institution = await db.institution.findFirst({
-    where: {
-      id: institutionId,
-      isActive: true
-    },
-    select: institutionSelect
-  });
+  let institution: any = null;
+  try {
+    institution = await db.institution.findFirst({
+      where: { id: institutionId, isActive: true },
+      select: institutionSelectWithStudy
+    });
+  } catch {
+    // If studyModeEnabled column is missing in DB schema, fallback gracefully
+    institution = await db.institution.findFirst({
+      where: { id: institutionId, isActive: true },
+      select: institutionSelectFallback
+    });
+  }
 
   if (!institution) {
     return null;
@@ -101,19 +120,31 @@ export class InstitutionContextService {
       };
     }
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: {
-        targetInstitution: {
-          select: institutionSelect
+    let user: any = null;
+    try {
+      user = await db.user.findUnique({
+        where: { id: userId },
+        select: {
+          targetInstitution: {
+            select: institutionSelectWithStudy
+          }
         }
-      }
-    });
+      });
+    } catch {
+      user = await db.user.findUnique({
+        where: { id: userId },
+        select: {
+          targetInstitution: {
+            select: institutionSelectFallback
+          }
+        }
+      });
+    }
 
     const targetInstitution = user?.targetInstitution;
     if (targetInstitution) {
       return {
-        ...targetInstitution,
+        ...formatInstitution(targetInstitution),
         source: 'user_target'
       };
     }
