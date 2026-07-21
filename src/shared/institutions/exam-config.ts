@@ -87,7 +87,7 @@ function buildLegacyDefaultConfig(institutionId: number): InstitutionExamRuntime
     premiumDailyRealExamLimit: PREMIUM_LIMITS.DAILY_REAL_SUBJECT_CREDITS,
     collaborationGateRealExams: FREE_TIER_LIMITS.COLLAB_GATE_EXAMS,
     defaultFullExamSource: 'REAL_PAST_QUESTION',
-    defaultPartialExamSource: 'REAL_PAST_QUESTION',
+    defaultPartialExamSource: 'MIXED',
     defaultCollabSource: COLLAB_QUESTION_SOURCE.PRACTICE,
     allowMixedPartialExams: true,
     allowMixedFullExams: false,
