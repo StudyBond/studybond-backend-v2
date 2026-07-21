@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { StudyController } from './study.controller';
 import { startStudySessionSchema, completeStudySessionSchema, studyIdParamSchema } from './study.schema';
 import { successEnvelopeSchema, withStandardErrorResponses } from '../../shared/openapi/responses';
@@ -16,12 +17,7 @@ export async function studyRoutes(app: FastifyInstance) {
             body: startStudySessionSchema,
             security: [{ bearerAuth: [] }],
             response: withStandardErrorResponses({
-                201: successEnvelopeSchema(
-                    // We don't have study-specific openapi schema declared separately, 
-                    // fastify will serialize it as standard JSON based on service outputs.
-                    // This is sufficient for the Fastify framework.
-                    startStudySessionSchema
-                )
+                201: successEnvelopeSchema(z.any())
             })
         }
     }, controller.startSession);
@@ -37,7 +33,7 @@ export async function studyRoutes(app: FastifyInstance) {
             body: completeStudySessionSchema,
             security: [{ bearerAuth: [] }],
             response: withStandardErrorResponses({
-                200: successEnvelopeSchema(completeStudySessionSchema)
+                200: successEnvelopeSchema(z.any())
             })
         }
     }, controller.completeSession);
