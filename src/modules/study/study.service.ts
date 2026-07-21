@@ -57,9 +57,26 @@ export class StudyService {
                 institutionId: institution.id,
                 realQuestionPool: QUESTION_POOLS.REAL_BANK,
                 topicBlueprints,
-                isFeaturedFree: !isPremium // Free users get only featured free questions
+                isFeaturedFree: !isPremium // Free users try featured free questions first
             }
         );
+
+        // Fallback: if no featured free questions exist for the subject/institution, fetch standard bank questions
+        if (questions.length === 0 && !isPremium) {
+            questions = await selectQuestionsForExam(
+                input.subjects,
+                EXAM_TYPES.PRACTICE,
+                questionsPerSubject,
+                [],
+                {
+                    deterministic: false,
+                    institutionId: institution.id,
+                    realQuestionPool: QUESTION_POOLS.REAL_BANK,
+                    topicBlueprints,
+                    isFeaturedFree: false
+                }
+            );
+        }
 
         // Slice total questions down to the limit (especially relevant for the free teaser of 3)
         if (questions.length > totalCountLimit) {
