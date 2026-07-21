@@ -33,6 +33,7 @@
     "institution:verify:backfill": "node scripts/verify-institution-backfill.js",
     "institution:verify:backfill:integration": "node scripts/verify-institution-backfill.js --integration",
     "normalize:subjects": "node scripts/normalize-subjects.js",
+    "study-mode:toggle": "node scripts/toggle-study-mode.js",
     "prisma:studio": "prisma studio",
     "lint": "tsc --noEmit",
     "test": "vitest run",

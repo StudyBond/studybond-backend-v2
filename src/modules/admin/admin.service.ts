@@ -1977,6 +1977,31 @@ export class AdminService {
             })
         );
     }
+
+    async toggleStudyMode(
+        _actorId: number,
+        _actorRole: string,
+        input: { institutionId: number; enabled: boolean }
+    ): Promise<{ success: boolean; message: string; studyModeEnabled: boolean }> {
+        const config = await prisma.institutionExamConfig.findFirst({
+            where: { institutionId: input.institutionId, isActive: true }
+        });
+
+        if (!config) {
+            throw new AppError('Active institution exam config not found', 404);
+        }
+
+        const updated = await prisma.institutionExamConfig.update({
+            where: { id: config.id },
+            data: { studyModeEnabled: input.enabled }
+        });
+
+        return {
+            success: true,
+            message: `Study Mode successfully ${input.enabled ? 'enabled' : 'disabled'} for institution ID ${input.institutionId}`,
+            studyModeEnabled: updated.studyModeEnabled
+        };
+    }
 }
 
 export const adminService = new AdminService();

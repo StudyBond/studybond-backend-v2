@@ -18,7 +18,13 @@ export class StudyService {
         // 1. Resolve institution context
         const institution = await institutionContextService.resolveForUser(userId, input.institutionCode);
 
-        // 2. Load user to check premium status
+        // 2. Fetch institution active exam config and check if Study Mode is enabled
+        const config = await institutionExamConfigService.getActiveConfigForInstitutionId(institution.id);
+        if (!config.studyModeEnabled) {
+            throw new AppError('Study Mode is currently disabled for your institution.', 403, 'STUDY_MODE_DISABLED');
+        }
+
+        // 3. Load user to check premium status
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: { isPremium: true }
@@ -42,8 +48,7 @@ export class StudyService {
             questionsPerSubject = Math.max(1, Math.ceil(STUDY_CONFIG.FREE_TEASER_QUESTIONS / input.subjects.length));
         }
 
-        // Fetch active exam config for topic blueprints (if any)
-        const config = await institutionExamConfigService.getActiveConfigForInstitutionId(institution.id);
+        // Fetch topic blueprints from active exam config
         const topicBlueprints = institutionExamConfigService.getTopicBlueprints(config);
 
         // 4. Fetch questions using selector

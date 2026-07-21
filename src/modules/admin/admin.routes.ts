@@ -613,4 +613,21 @@ export async function adminRoutes(app: FastifyInstance) {
             security: [{ bearerAuth: [] }]
         }
     }, adminController.getFreeExamLeaderboard);
+
+    // ADMIN+: Toggle Study Mode on/off per institution
+    app.post('/study-mode/toggle', {
+        preHandler: [requireAdmin],
+        config: {
+            rateLimit: {
+                max: ADMIN_CONFIG.MUTATION_RATE_LIMIT_MAX,
+                timeWindow: '1 hour'
+            }
+        },
+        schema: {
+            tags: ['Admin'],
+            summary: 'Toggle Study Mode for an institution',
+            description: 'Enable or disable Study Mode feature for a given institution ID.',
+            security: [{ bearerAuth: [] }]
+        }
+    }, adminController.toggleStudyMode);
 }

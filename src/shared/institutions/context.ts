@@ -17,6 +17,7 @@ export interface ResolvedInstitutionContext {
   code: string;
   name: string;
   slug: string;
+  studyModeEnabled: boolean;
   source: 'explicit' | 'user_target' | 'launch_default';
 }
 
@@ -24,13 +25,28 @@ const institutionSelect = {
   id: true,
   code: true,
   name: true,
-  slug: true
+  slug: true,
+  examConfigs: {
+    where: { isActive: true },
+    select: { studyModeEnabled: true },
+    take: 1
+  }
 } as const;
+
+function formatInstitution(inst: any): Omit<ResolvedInstitutionContext, 'source'> {
+  return {
+    id: inst.id,
+    code: inst.code,
+    name: inst.name,
+    slug: inst.slug,
+    studyModeEnabled: inst.examConfigs?.[0]?.studyModeEnabled ?? false,
+  };
+}
 
 async function findActiveInstitutionByCode(
   db: InstitutionClient,
   code: string
-): Promise<ResolvedInstitutionContext | null> {
+): Promise<Omit<ResolvedInstitutionContext, 'source'> | null> {
   const institution = await db.institution.findFirst({
     where: {
       code,
@@ -43,13 +59,13 @@ async function findActiveInstitutionByCode(
     return null;
   }
 
-  return institution;
+  return formatInstitution(institution);
 }
 
 async function findActiveInstitutionById(
   db: InstitutionClient,
   institutionId: number
-): Promise<ResolvedInstitutionContext | null> {
+): Promise<Omit<ResolvedInstitutionContext, 'source'> | null> {
   const institution = await db.institution.findFirst({
     where: {
       id: institutionId,
@@ -62,7 +78,7 @@ async function findActiveInstitutionById(
     return null;
   }
 
-  return institution;
+  return formatInstitution(institution);
 }
 
 export class InstitutionContextService {

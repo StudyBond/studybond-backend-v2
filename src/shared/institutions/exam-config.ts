@@ -34,6 +34,7 @@ export interface InstitutionExamRuntimeConfig {
   allowMixedFullExams: boolean;
   allowPracticeCollaboration: boolean;
   allowMixedCollaboration: boolean;
+  studyModeEnabled: boolean;
   additionalRules: Record<string, unknown> | null;
 }
 
@@ -62,6 +63,7 @@ function normalizeRecord(record: any): InstitutionExamRuntimeConfig {
     allowMixedFullExams: record.allowMixedFullExams,
     allowPracticeCollaboration: record.allowPracticeCollaboration,
     allowMixedCollaboration: record.allowMixedCollaboration,
+    studyModeEnabled: record.studyModeEnabled ?? false,
     additionalRules: record.additionalRules as Record<string, unknown> | null
   };
 }
@@ -79,23 +81,20 @@ function buildLegacyDefaultConfig(institutionId: number): InstitutionExamRuntime
     threeSubjectDurationSeconds: EXAM_CONFIG.THREE_SUBJECT_DURATION_SECONDS,
     fullExamDurationSeconds: EXAM_CONFIG.FULL_EXAM_DURATION_SECONDS,
     collaborationDurationSeconds: EXAM_CONFIG.COLLAB_EXAM_DURATION_SECONDS,
-    // Legacy free access allowed a single full real exam before premium prompts.
-    freeRealExamCount: 1,
+    freeRealExamCount: FREE_TIER_LIMITS.FREE_TOTAL_SUBJECT_CREDITS,
     freeFullRealTotalAttempts: FREE_TIER_LIMITS.FREE_FULL_REAL_TOTAL_ATTEMPTS,
     freeQuestionsPerSubject: EXAM_CONFIG.QUESTIONS_PER_SUBJECT,
-    // Keep the legacy fallback aligned to the old "5 real exams/day" meaning.
-    premiumDailyRealExamLimit: Math.floor(PREMIUM_LIMITS.DAILY_REAL_SUBJECT_CREDITS / 4),
+    premiumDailyRealExamLimit: PREMIUM_LIMITS.DAILY_REAL_SUBJECT_CREDITS,
     collaborationGateRealExams: FREE_TIER_LIMITS.COLLAB_GATE_EXAMS,
-    defaultFullExamSource: EXAM_TYPES.REAL_PAST_QUESTION,
-    defaultPartialExamSource: EXAM_TYPES.MIXED,
-    defaultCollabSource: COLLAB_QUESTION_SOURCE.REAL_PAST_QUESTION,
+    defaultFullExamSource: 'REAL_PAST_QUESTION',
+    defaultPartialExamSource: 'REAL_PAST_QUESTION',
+    defaultCollabSource: COLLAB_QUESTION_SOURCE.PRACTICE,
     allowMixedPartialExams: true,
     allowMixedFullExams: false,
     allowPracticeCollaboration: true,
     allowMixedCollaboration: true,
-    additionalRules: {
-      source: 'legacy-default-fallback'
-    }
+    studyModeEnabled: false,
+    additionalRules: null
   };
 }
 

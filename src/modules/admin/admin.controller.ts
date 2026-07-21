@@ -774,6 +774,26 @@ export class AdminController {
         );
         return reply.send(result);
     };
+
+    /* POST /admin/study-mode/toggle - Toggle Study Mode on/off for an institution (ADMIN+) */
+    toggleStudyMode = async (
+        request: FastifyRequest,
+        reply: FastifyReply
+    ) => {
+        const user = getAuthUser(request);
+        const body = request.body as { institutionId: number; enabled: boolean };
+
+        if (!body || typeof body.institutionId !== 'number' || typeof body.enabled !== 'boolean') {
+            throw new ValidationError('institutionId (number) and enabled (boolean) are required');
+        }
+
+        const result = await adminService.toggleStudyMode(
+            user.userId,
+            user.role,
+            body
+        );
+        return reply.send(result);
+    };
 }
 
 // Singleton instance
