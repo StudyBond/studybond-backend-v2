@@ -172,6 +172,11 @@ export interface QuestionWithMeta {
   questionType: string;
   parentQuestionText?: string | null;
   parentQuestionImageUrl?: string | null;
+  explanation?: {
+    explanationText: string;
+    explanationImageUrl: string | null;
+    additionalNotes: string | null;
+  } | null;
 }
 
 export interface SPCalculation {

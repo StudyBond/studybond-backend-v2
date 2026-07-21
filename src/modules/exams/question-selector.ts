@@ -200,6 +200,13 @@ const buildQuestionSelect = () => ({
             questionText: true,
             imageUrl: true
         }
+    },
+    explanation: {
+        select: {
+            explanationText: true,
+            explanationImageUrl: true,
+            additionalNotes: true
+        }
     }
 });
 
@@ -254,6 +261,11 @@ async function hydrateQuestionsByIds(ids: number[]): Promise<QuestionWithMeta[]>
             ...q,
             parentQuestionText: (q as any).parentQuestion?.questionText ?? null,
             parentQuestionImageUrl: (q as any).parentQuestion?.imageUrl ?? null,
+            explanation: (q as any).explanation ? {
+                explanationText: (q as any).explanation.explanationText,
+                explanationImageUrl: (q as any).explanation.explanationImageUrl,
+                additionalNotes: (q as any).explanation.additionalNotes,
+            } : null,
         });
     }
 

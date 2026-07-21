@@ -29,6 +29,7 @@ import errorHandlerPlugin from "./plugins/error-handler";
 import metricsPlugin from "./plugins/metrics";
 import { logRequest, logResponse } from "./shared/hooks/logRequest";
 import { collaborationPlugin } from "./modules/collaboration/collaboration.plugin";
+import { studyPlugin } from "./modules/study/study.plugin";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -124,6 +125,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(collaborationPlugin, { prefix: "/api" });
   await app.register(leaderboardPlugin, { prefix: "/api" });
   await app.register(subscriptionsPlugin, { prefix: "/api" });
+  await app.register(studyPlugin, { prefix: "/api" });
   await app.register(devToolsPlugin, { prefix: "/internal/dev" });
 
   /* HEALTH CHECK ENDPOINT */

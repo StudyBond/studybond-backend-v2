@@ -55,6 +55,7 @@ enum ExamType {
   GROUP_COLLAB
   DAILY_CHALLENGE
   BOOKMARK_EXAM
+  STUDY
 }
 
 enum ExamStatus {

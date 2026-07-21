@@ -21,7 +21,8 @@ export const EXAM_TYPES = {
     ONE_V_ONE_DUEL: 'ONE_V_ONE_DUEL',
     GROUP_COLLAB: 'GROUP_COLLAB',
     DAILY_CHALLENGE: 'DAILY_CHALLENGE',
-    BOOKMARK_EXAM: 'BOOKMARK_EXAM'
+    BOOKMARK_EXAM: 'BOOKMARK_EXAM',
+    STUDY: 'STUDY'
 } as const;
 
 export type ExamType = keyof typeof EXAM_TYPES;
@@ -57,6 +58,18 @@ export const EXAM_CONFIG = {
     OFFLINE_SUBMISSION_EXTENDED_GRACE_SECONDS: 300 /* 5 minutes beyond normal grace */
 } as const;
 
+/* Study Mode configuration */
+export const STUDY_CONFIG = {
+    /** Questions per subject for premium users */
+    QUESTIONS_PER_SUBJECT: 15,
+    /** Maximum total questions across all subjects */
+    MAX_TOTAL_QUESTIONS: 60,
+    /** Free users get a teaser of this many questions total */
+    FREE_TEASER_QUESTIONS: 3,
+    /** Maximum study sessions per hour (rate limit to prevent scraping) */
+    MAX_SESSIONS_PER_HOUR: 10,
+} as const;
+
 
 export const SP_MULTIPLIERS = {
     REAL_SOLO: 1.0, /* first attempt */
@@ -64,7 +77,8 @@ export const SP_MULTIPLIERS = {
     RETAKE: 0.5,
     COLLABORATION: 1.5,
     DAILY_CHALLENGE_FIXED_SP: 40,
-    BOOKMARK_EXAM: 0.5
+    BOOKMARK_EXAM: 0.5,
+    STUDY: 0 /* Study mode awards no SP — it's for learning, not scoring */
 } as const;
 
 
