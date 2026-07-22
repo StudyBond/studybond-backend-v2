@@ -627,7 +627,10 @@ export async function adminRoutes(app: FastifyInstance) {
             tags: ['Admin'],
             summary: 'Toggle Study Mode for an institution',
             description: 'Enable or disable Study Mode feature for a given institution ID.',
-            security: [{ bearerAuth: [] }]
+            security: [{ bearerAuth: [] }],
+            response: withStandardErrorResponses({
+                200: adminActionResultSchema
+            })
         }
     }, adminController.toggleStudyMode);
 }

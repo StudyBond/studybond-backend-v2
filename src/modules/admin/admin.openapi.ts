@@ -13,35 +13,14 @@ const institutionContextSchema = z.object({
   studyModeEnabled: z.boolean().optional(),
   source: z.enum(['explicit', 'user_target', 'launch_default'])
 }).passthrough();
-const adminAuditActionSchema = z.enum([
-  'ROLE_PROMOTED',
-  'ROLE_DEMOTED',
-  'ROLE_PROMOTION_ATTEMPT_FAILED',
-  'ROLE_DEMOTION_ATTEMPT_FAILED',
-  'USER_BANNED',
-  'USER_UNBANNED',
-  'DEVICE_REMOVED',
-  'PREMIUM_GRANTED',
-  'PREMIUM_EXTENDED',
-  'PREMIUM_REVOKED',
-  'STEP_UP_CHALLENGE_REQUESTED',
-  'STEP_UP_CHALLENGE_VERIFIED',
-  'STEP_UP_CHALLENGE_FAILED',
-  'QUESTION_DELETED',
-  'QUESTION_EDITED',
-  'EMAIL_SYSTEM_TOGGLED',
-  'REPORT_REVIEWED',
-  'REPORT_RESOLVED',
-  'REPORT_HARD_DELETED',
-  'UNAUTHORIZED_ACTION_ATTEMPT'
-]);
-const adminAuditTargetTypeSchema = z.enum(['USER', 'QUESTION', 'DEVICE', 'SYSTEM', 'REPORT']);
+const adminAuditActionSchema = z.string();
+const adminAuditTargetTypeSchema = z.string();
 
 const premiumCoverageStateSchema = z.object({
   isPremium: z.boolean(),
   effectiveEndDate: isoDateTimeSchema.nullable(),
-  activeSourceTypes: z.array(z.enum(['SUBSCRIPTION', 'ADMIN_ENTITLEMENT']))
-}).strict();
+  activeSourceTypes: z.array(z.string())
+}).passthrough();
 
 export const adminOverviewResponseSchema = z.object({
   generatedAt: isoDateTimeSchema,
@@ -54,14 +33,14 @@ export const adminOverviewResponseSchema = z.object({
     superadmins: z.number().int().nonnegative(),
     newLast7Days: z.number().int().nonnegative(),
     newLast30Days: z.number().int().nonnegative()
-  }).strict(),
+  }).passthrough(),
   premium: z.object({
     activeUsers: z.number().int().nonnegative(),
     activePaidSubscriptions: z.number().int().nonnegative(),
     activeAdminEntitlements: z.number().int().nonnegative(),
     expiringIn7Days: z.number().int().nonnegative(),
     expiringIn30Days: z.number().int().nonnegative()
-  }).strict(),
+  }).passthrough(),
   engagement: z.object({
     activeSessions: z.number().int().nonnegative(),
     usersWithActiveStreak: z.number().int().nonnegative(),
@@ -71,21 +50,21 @@ export const adminOverviewResponseSchema = z.object({
     collaborationWaiting: z.number().int().nonnegative(),
     collaborationInProgress: z.number().int().nonnegative(),
     collaborationCreatedLast7Days: z.number().int().nonnegative()
-  }).strict(),
+  }).passthrough(),
   content: z.object({
     totalQuestions: z.number().int().nonnegative(),
     freeExamQuestions: z.number().int().nonnegative(),
     realUiQuestions: z.number().int().nonnegative(),
     practiceQuestions: z.number().int().nonnegative(),
     pendingReports: z.number().int().nonnegative()
-  }).strict(),
+  }).passthrough(),
   risk: z.object({
     leaderboardSignalsLast24Hours: z.number().int().nonnegative(),
     pendingStepUpChallenges: z.number().int().nonnegative(),
     adminActionsLast24Hours: z.number().int().nonnegative(),
     recentEmailFailuresLast24Hours: z.number().int().nonnegative()
-  }).strict()
-}).strict();
+  }).passthrough()
+}).passthrough();
 
 export const adminActivityPointSchema = z.object({
   date: z.string(),
@@ -95,7 +74,7 @@ export const adminActivityPointSchema = z.object({
   collaborationSessions: z.number().int().nonnegative(),
   paidPremiumActivations: z.number().int().nonnegative(),
   manualPremiumGrants: z.number().int().nonnegative()
-}).strict();
+}).passthrough();
 
 export const adminActivityResponseSchema = z.object({
   generatedAt: isoDateTimeSchema,
@@ -109,9 +88,9 @@ export const adminActivityResponseSchema = z.object({
     collaborationSessions: z.number().int().nonnegative(),
     paidPremiumActivations: z.number().int().nonnegative(),
     manualPremiumGrants: z.number().int().nonnegative()
-  }).strict(),
+  }).passthrough(),
   daily: z.array(adminActivityPointSchema)
-}).strict();
+}).passthrough();
 
 export const adminPremiumPointSchema = z.object({
   date: z.string(),
@@ -119,7 +98,7 @@ export const adminPremiumPointSchema = z.object({
   revenueNaira: z.number().nonnegative(),
   manualGrants: z.number().int().nonnegative(),
   revocations: z.number().int().nonnegative()
-}).strict();
+}).passthrough();
 
 export const adminPremiumInsightsResponseSchema = z.object({
   generatedAt: isoDateTimeSchema,
@@ -132,20 +111,20 @@ export const adminPremiumInsightsResponseSchema = z.object({
     autoRenewEnabledSubscriptions: z.number().int().nonnegative(),
     expiringIn7Days: z.number().int().nonnegative(),
     expiringIn30Days: z.number().int().nonnegative()
-  }).strict(),
+  }).passthrough(),
   revenue: z.object({
     successfulPayments: z.number().int().nonnegative(),
     successfulRevenueNaira: z.number().nonnegative(),
     reusableAuthorizations: z.number().int().nonnegative()
-  }).strict(),
+  }).passthrough(),
   adminActions: z.object({
     manualGrants: z.number().int().nonnegative(),
     promotionalGrants: z.number().int().nonnegative(),
     correctiveGrants: z.number().int().nonnegative(),
     revocations: z.number().int().nonnegative()
-  }).strict(),
+  }).passthrough(),
   daily: z.array(adminPremiumPointSchema)
-}).strict();
+}).passthrough();
 
 export const adminSystemHealthResponseSchema = z.object({
   generatedAt: isoDateTimeSchema,
@@ -156,22 +135,22 @@ export const adminSystemHealthResponseSchema = z.object({
     redisEnabled: z.boolean(),
     leaderboardProjectionEnabled: z.boolean(),
     leaderboardRedisReadEnabled: z.boolean()
-  }).strict(),
+  }).passthrough(),
   dependencies: z.object({
     databaseReachable: z.boolean(),
     emailEnabled: z.boolean()
-  }).strict(),
+  }).passthrough(),
   analytics: z.object({
     latestRollupDate: z.string().nullable(),
     latestRollupUpdatedAt: isoDateTimeSchema.nullable(),
     rollupLagDays: z.number().int().nonnegative().nullable()
-  }).strict(),
+  }).passthrough(),
   queues: z.object({
     leaderboardProjectionBacklog: z.number().int().nonnegative(),
     pendingStepUpChallenges: z.number().int().nonnegative(),
     pendingQuestionReports: z.number().int().nonnegative(),
     recentEmailFailuresLast24Hours: z.number().int().nonnegative()
-  }).strict(),
+  }).passthrough(),
   live: z.object({
     activeWsConnections: z.number().int().nonnegative(),
     wsOutboundQueueLength: z.number().int().nonnegative(),
@@ -179,8 +158,8 @@ export const adminSystemHealthResponseSchema = z.object({
     totalWsConnectionsReplaced: z.number().int().nonnegative(),
     totalWsDroppedOutboundEvents: z.number().int().nonnegative(),
     totalHttpRequests: z.number().int().nonnegative()
-  }).strict()
-}).strict();
+  }).passthrough()
+}).passthrough();
 
 export const adminUser360ResponseSchema = z.object({
   generatedAt: isoDateTimeSchema,
@@ -199,7 +178,7 @@ export const adminUser360ResponseSchema = z.object({
     emailUnsubscribed: z.boolean(),
     createdAt: isoDateTimeSchema,
     updatedAt: isoDateTimeSchema
-  }).strict(),
+  }).passthrough(),
   premium: z.object({
     isPremium: z.boolean(),
     deviceAccessMode: z.enum(['FREE', 'PREMIUM']),
@@ -213,14 +192,14 @@ export const adminUser360ResponseSchema = z.object({
       startDate: isoDateTimeSchema,
       endDate: isoDateTimeSchema,
       lastPaymentVerifiedAt: isoDateTimeSchema.nullable()
-    }).strict().nullable(),
+    }).passthrough().nullable(),
     activeEntitlements: z.array(z.object({
       id: z.string(),
       kind: premiumEntitlementKindSchema,
       status: premiumEntitlementStatusSchema,
       startsAt: isoDateTimeSchema,
       endsAt: isoDateTimeSchema
-    }).strict()),
+    }).passthrough()),
     latestSuccessfulPayment: z.object({
       reference: z.string(),
       amountPaid: z.number().nonnegative(),
@@ -228,8 +207,8 @@ export const adminUser360ResponseSchema = z.object({
       provider: z.string(),
       channel: z.string().nullable(),
       paidAt: isoDateTimeSchema
-    }).strict().nullable()
-  }).strict(),
+    }).passthrough().nullable()
+  }).passthrough(),
   engagement: z.object({
     totalSp: z.number().int(),
     weeklySp: z.number().int(),
@@ -250,7 +229,7 @@ export const adminUser360ResponseSchema = z.object({
     lastExamStartedAt: isoDateTimeSchema.nullable(),
     lastExamCompletedAt: isoDateTimeSchema.nullable(),
     lastStudyActivityDate: isoDateTimeSchema.nullable()
-  }).strict(),
+  }).passthrough(),
   security: z.object({
     activeSessionsCount: z.number().int().nonnegative(),
     verifiedDevicesCount: z.number().int().nonnegative(),
@@ -261,7 +240,7 @@ export const adminUser360ResponseSchema = z.object({
       expiresAt: isoDateTimeSchema.nullable(),
       tokenVersion: z.number().int().nonnegative(),
       authPolicyVersion: z.number().int().nonnegative()
-    }).strict()),
+    }).passthrough()),
     registeredDevices: z.array(z.object({
       deviceId: z.string(),
       deviceName: z.string(),
@@ -270,21 +249,21 @@ export const adminUser360ResponseSchema = z.object({
       verifiedAt: isoDateTimeSchema.nullable(),
       lastLoginAt: isoDateTimeSchema.nullable(),
       registrationMethod: z.string().nullable()
-    }).strict()),
+    }).passthrough()),
     recentAuditEvents: z.array(z.object({
       action: z.string(),
       createdAt: isoDateTimeSchema,
       deviceId: z.string().nullable(),
       ipAddress: z.string().nullable()
-    }).strict()),
+    }).passthrough()),
     recentAdminActions: z.array(z.object({
       action: adminAuditActionSchema,
       actorId: z.number().int().positive(),
       actorRole: z.string(),
       createdAt: isoDateTimeSchema,
       reason: z.string().nullable()
-    }).strict())
-  }).strict(),
+    }).passthrough())
+  }).passthrough(),
   recent: z.object({
     exams: z.array(z.object({
       id: z.number().int().positive(),
@@ -295,14 +274,14 @@ export const adminUser360ResponseSchema = z.object({
       isCollaboration: z.boolean(),
       startedAt: isoDateTimeSchema,
       completedAt: isoDateTimeSchema.nullable()
-    }).strict()),
+    }).passthrough()),
     bookmarks: z.array(z.object({
       id: z.number().int().positive(),
       questionId: z.number().int().positive(),
       subject: z.string(),
       createdAt: isoDateTimeSchema,
       expiresAt: isoDateTimeSchema.nullable()
-    }).strict()),
+    }).passthrough()),
     collaborationSessions: z.array(z.object({
       sessionId: z.number().int().positive(),
       sessionCode: z.string(),
@@ -312,9 +291,9 @@ export const adminUser360ResponseSchema = z.object({
       createdAt: isoDateTimeSchema,
       startedAt: isoDateTimeSchema.nullable(),
       endedAt: isoDateTimeSchema.nullable()
-    }).strict())
-  }).strict()
-}).strict();
+    }).passthrough())
+  }).passthrough()
+}).passthrough();
 
 export const adminStepUpRequestResponseSchema = z.object({
   challengeId: z.string().uuid(),
@@ -322,24 +301,24 @@ export const adminStepUpRequestResponseSchema = z.object({
   expiresAt: isoDateTimeSchema,
   deliveryMode: z.enum(['BREVO', 'RESEND', 'DEV_PREVIEW']),
   message: z.string()
-}).strict();
+}).passthrough();
 
 export const adminStepUpVerifyResponseSchema = z.object({
   purpose: z.literal('SUPERADMIN_SENSITIVE_ACTION'),
   stepUpToken: z.string(),
   expiresAt: isoDateTimeSchema,
   message: z.string()
-}).strict();
+}).passthrough();
 
 export const adminActionResultSchema = z.object({
   success: z.boolean(),
   message: z.string()
-}).strict();
+}).passthrough();
 
 export const adminSystemSettingsResponseSchema = z.object({
   emailEnabled: z.boolean(),
   updatedAt: isoDateTimeSchema
-}).strict();
+}).passthrough();
 
 export const adminUserListItemSchema = z.object({
   id: z.number().int().positive(),
@@ -350,12 +329,12 @@ export const adminUserListItemSchema = z.object({
   isPremium: z.boolean(),
   createdAt: isoDateTimeSchema,
   deviceCount: z.number().int().nonnegative()
-}).strict();
+}).passthrough();
 
 export const adminUserListResponseSchema = z.object({
   users: z.array(adminUserListItemSchema),
   pagination: paginationSchema
-}).strict();
+}).passthrough();
 
 export const premiumUserListItemSchema = z.object({
   id: z.number().int().positive(),
@@ -364,12 +343,12 @@ export const premiumUserListItemSchema = z.object({
   isPremium: z.boolean(),
   subscriptionEndDate: isoDateTimeSchema.nullable(),
   createdAt: isoDateTimeSchema
-}).strict();
+}).passthrough();
 
 export const premiumUserListResponseSchema = z.object({
   users: z.array(premiumUserListItemSchema),
   pagination: paginationSchema
-}).strict();
+}).passthrough();
 
 export const premiumHistoryEntitlementSchema = z.object({
   id: z.string(),
@@ -384,13 +363,13 @@ export const premiumHistoryEntitlementSchema = z.object({
     id: z.number().int().positive(),
     email: z.string().email(),
     fullName: z.string()
-  }).strict(),
+  }).passthrough(),
   revokedByAdmin: z.object({
     id: z.number().int().positive(),
     email: z.string().email(),
     fullName: z.string()
-  }).strict().nullable()
-}).strict();
+  }).passthrough().nullable()
+}).passthrough();
 
 export const premiumHistoryResponseSchema = z.object({
   user: z.object({
@@ -399,7 +378,7 @@ export const premiumHistoryResponseSchema = z.object({
     fullName: z.string(),
     isPremium: z.boolean(),
     subscriptionEndDate: isoDateTimeSchema.nullable()
-  }).strict(),
+  }).passthrough(),
   currentAccess: premiumCoverageStateSchema,
   subscription: z.object({
     status: z.enum(['ACTIVE', 'EXPIRED', 'CANCELLED']),
@@ -409,9 +388,9 @@ export const premiumHistoryResponseSchema = z.object({
     paymentReference: z.string().nullable(),
     startDate: isoDateTimeSchema,
     endDate: isoDateTimeSchema
-  }).strict().nullable(),
+  }).passthrough().nullable(),
   entitlements: z.array(premiumHistoryEntitlementSchema)
-}).strict();
+}).passthrough();
 
 export const premiumGrantMutationResponseSchema = z.object({
   success: z.boolean(),
@@ -424,21 +403,21 @@ export const premiumGrantMutationResponseSchema = z.object({
     startsAt: isoDateTimeSchema,
     endsAt: isoDateTimeSchema,
     note: z.string()
-  }).strict()
-}).strict();
+  }).passthrough()
+}).passthrough();
 
 export const premiumRevokeMutationResponseSchema = z.object({
   success: z.boolean(),
   message: z.string(),
   revokedCount: z.number().int().nonnegative(),
   currentAccess: premiumCoverageStateSchema
-}).strict();
+}).passthrough();
 
 export const adminAuditActorSchema = z.object({
   id: z.number().int().positive(),
   email: z.string().email(),
   fullName: z.string()
-}).strict();
+}).passthrough();
 
 export const adminAuditLogEntrySchema = z.object({
   id: z.number().int().positive(),
@@ -452,9 +431,9 @@ export const adminAuditLogEntrySchema = z.object({
   ipAddress: z.string().nullable(),
   createdAt: isoDateTimeSchema,
   actor: adminAuditActorSchema
-}).strict();
+}).passthrough();
 
 export const adminAuditLogListResponseSchema = z.object({
   logs: z.array(adminAuditLogEntrySchema),
   meta: paginationSchema
-}).strict();
+}).passthrough();
