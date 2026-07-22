@@ -76,7 +76,7 @@ export const securityOverviewSchema = z.object({
     isCurrent: z.boolean(),
     isRegisteredPremiumDevice: z.boolean(),
     registrationMethod: z.string().nullable()
-  }).strict()),
+  }).passthrough()),
   registeredPremiumDevices: z.array(z.object({
     deviceId: z.string(),
     deviceName: z.string(),
@@ -87,8 +87,8 @@ export const securityOverviewSchema = z.object({
     isCurrent: z.boolean(),
     isActive: z.boolean(),
     registrationMethod: z.string().nullable()
-  }).strict())
-}).strict();
+  }).passthrough())
+}).passthrough();
 
 export const passwordChangedPayloadSchema = z.object({
   success: z.literal(true),
