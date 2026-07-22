@@ -52,22 +52,40 @@ export class StudyService {
         const topicBlueprints = institutionExamConfigService.getTopicBlueprints(config);
 
         // 4. Fetch questions using selector
-        let questions = await selectQuestionsForExam(
-            input.subjects,
-            EXAM_TYPES.PRACTICE, // Reuse practice selectors
-            questionsPerSubject,
-            [],
-            {
-                deterministic: false,
-                institutionId: institution.id,
-                realQuestionPool: QUESTION_POOLS.REAL_BANK,
-                topicBlueprints,
-                isFeaturedFree: !isPremium // Free users try featured free questions first
-            }
-        );
+        let questions: any[] = [];
 
-        // Fallback: if no featured free questions exist for the subject/institution, fetch standard bank questions
-        if (questions.length === 0 && !isPremium) {
+        if (isPremium) {
+            // Premium users get a rich mix of Real Past Question Bank & Practice Pool questions
+            try {
+                questions = await selectQuestionsForExam(
+                    input.subjects,
+                    EXAM_TYPES.MIXED,
+                    questionsPerSubject,
+                    [],
+                    {
+                        deterministic: false,
+                        institutionId: institution.id,
+                        realQuestionPool: QUESTION_POOLS.REAL_BANK,
+                        topicBlueprints,
+                    }
+                );
+            } catch {
+                // Fallback to Practice pool if real bank pool for a subject is sparse
+                questions = await selectQuestionsForExam(
+                    input.subjects,
+                    EXAM_TYPES.PRACTICE,
+                    questionsPerSubject,
+                    [],
+                    {
+                        deterministic: false,
+                        institutionId: institution.id,
+                        realQuestionPool: QUESTION_POOLS.REAL_BANK,
+                        topicBlueprints,
+                    }
+                );
+            }
+        } else {
+            // Free users pull exclusively from their Free Exam Pool (featured free question sample)
             questions = await selectQuestionsForExam(
                 input.subjects,
                 EXAM_TYPES.PRACTICE,
@@ -78,9 +96,26 @@ export class StudyService {
                     institutionId: institution.id,
                     realQuestionPool: QUESTION_POOLS.REAL_BANK,
                     topicBlueprints,
-                    isFeaturedFree: false
+                    isFeaturedFree: true // Free users access featured free exam pool questions
                 }
             );
+
+            // Fallback: if no featured free questions exist for the subject, fetch standard practice bank
+            if (questions.length === 0) {
+                questions = await selectQuestionsForExam(
+                    input.subjects,
+                    EXAM_TYPES.PRACTICE,
+                    questionsPerSubject,
+                    [],
+                    {
+                        deterministic: false,
+                        institutionId: institution.id,
+                        realQuestionPool: QUESTION_POOLS.REAL_BANK,
+                        topicBlueprints,
+                        isFeaturedFree: false
+                    }
+                );
+            }
         }
 
         // Slice total questions down to the limit (especially relevant for the free teaser of 3)
