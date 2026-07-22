@@ -888,17 +888,6 @@ export class AdminAnalyticsService {
                 throw new NotFoundError('User not found.');
             }
 
-            if (actorRole !== 'SUPERADMIN' && user.role !== 'USER') {
-                await auditService.logUnauthorizedAttempt(
-                    actorId,
-                    actorRole,
-                    'GET_ADMIN_USER_360',
-                    'USER',
-                    String(userId)
-                );
-                throw new ForbiddenError('Only superadmins can inspect admin or superadmin user profiles in the control center.');
-            }
-
             const institution = await institutionContextService.resolveForUser(userId, institutionCode);
 
             const [

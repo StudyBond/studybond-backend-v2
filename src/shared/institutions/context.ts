@@ -150,14 +150,34 @@ export class InstitutionContextService {
     }
 
     const launchInstitution = await findActiveInstitutionByCode(db, this.launchInstitutionCode);
-    if (!launchInstitution) {
-      throw new NotFoundError(`Launch institution ${this.launchInstitutionCode} is not configured.`);
+    if (launchInstitution) {
+      return {
+        ...launchInstitution,
+        source: 'launch_default'
+      };
     }
 
-    return {
-      ...launchInstitution,
-      source: 'launch_default'
-    };
+    let anyActive: any = null;
+    try {
+      anyActive = await db.institution.findFirst({
+        where: { isActive: true },
+        select: institutionSelectWithStudy
+      });
+    } catch {
+      anyActive = await db.institution.findFirst({
+        where: { isActive: true },
+        select: institutionSelectFallback
+      });
+    }
+
+    if (anyActive) {
+      return {
+        ...formatInstitution(anyActive),
+        source: 'launch_default'
+      };
+    }
+
+    throw new NotFoundError(`No active institution is configured on the platform.`);
   }
 
   async resolveByCode(
