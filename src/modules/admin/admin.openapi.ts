@@ -10,8 +10,9 @@ const institutionContextSchema = z.object({
   code: z.string(),
   name: z.string(),
   slug: z.string(),
+  studyModeEnabled: z.boolean().optional(),
   source: z.enum(['explicit', 'user_target', 'launch_default'])
-}).strict();
+}).passthrough();
 const adminAuditActionSchema = z.enum([
   'ROLE_PROMOTED',
   'ROLE_DEMOTED',
