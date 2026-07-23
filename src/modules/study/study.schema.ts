@@ -18,7 +18,8 @@ export const startStudySessionSchema = z.object({
             'Duplicate subjects are not allowed'
         ),
     mode: z.enum(['random', 'topic']).optional().default('random'),
-    selectedTopics: z.array(z.string()).optional().default([])
+    selectedTopics: z.array(z.string()).optional().default([]),
+    limit: z.number().int().min(1).max(500).optional()
 }).strict();
 
 /** GET /study/topics — fetch available topics tree */

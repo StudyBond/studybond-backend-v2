@@ -9,6 +9,7 @@ export interface StartStudySessionInput {
     institutionCode?: string;
     mode?: 'random' | 'topic';
     selectedTopics?: string[];
+    limit?: number;
 }
 
 export interface SubtopicInfo {

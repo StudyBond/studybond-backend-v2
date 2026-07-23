@@ -39,11 +39,19 @@ export class StudyService {
 
         // 3. Determine question counts
         // Free users get a teaser of exactly 3 questions total across all selected subjects.
-        // Premium users get STUDY_CONFIG.QUESTIONS_PER_SUBJECT (15) per subject up to STUDY_CONFIG.MAX_TOTAL_QUESTIONS (60).
-        let questionsPerSubject: number = STUDY_CONFIG.QUESTIONS_PER_SUBJECT;
-        let totalCountLimit: number = STUDY_CONFIG.MAX_TOTAL_QUESTIONS;
+        // Premium users default to 15 questions per study session (or custom limit if chosen via topic picker).
+        let totalCountLimit: number = 15;
+        let questionsPerSubject: number = 15;
 
-        if (!isPremium) {
+        if (isPremium) {
+            if (input.limit && input.limit > 0) {
+                totalCountLimit = input.limit;
+                questionsPerSubject = Math.max(input.limit, Math.ceil(input.limit / input.subjects.length));
+            } else {
+                totalCountLimit = 15;
+                questionsPerSubject = Math.max(15, Math.ceil(15 / input.subjects.length));
+            }
+        } else {
             totalCountLimit = STUDY_CONFIG.FREE_TEASER_QUESTIONS;
             // Distribute teaser questions among selected subjects
             questionsPerSubject = Math.max(1, Math.ceil(STUDY_CONFIG.FREE_TEASER_QUESTIONS / input.subjects.length));
