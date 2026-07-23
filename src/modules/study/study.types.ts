@@ -7,6 +7,30 @@ import { Subject } from '../exams/exams.constants';
 export interface StartStudySessionInput {
     subjects: Subject[];
     institutionCode?: string;
+    mode?: 'random' | 'topic';
+    selectedTopics?: string[];
+}
+
+export interface SubtopicInfo {
+    name: string;
+    questionCount: number;
+    rawTopics: string[];
+}
+
+export interface TopicFamilyInfo {
+    topicFamily: string;
+    totalQuestions: number;
+    subtopics: SubtopicInfo[];
+}
+
+export interface SubjectTopicTree {
+    subject: string;
+    totalQuestions: number;
+    topicFamilies: TopicFamilyInfo[];
+}
+
+export interface GetTopicsResponse {
+    subjects: SubjectTopicTree[];
 }
 
 export interface CompleteStudySessionInput {

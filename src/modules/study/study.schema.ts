@@ -16,8 +16,16 @@ export const startStudySessionSchema = z.object({
         .refine(
             (subjects) => new Set(subjects).size === subjects.length,
             'Duplicate subjects are not allowed'
-        )
+        ),
+    mode: z.enum(['random', 'topic']).optional().default('random'),
+    selectedTopics: z.array(z.string()).optional().default([])
 }).strict();
+
+/** GET /study/topics — fetch available topics tree */
+export const getTopicsQuerySchema = z.object({
+    institutionCode: optionalInstitutionCodeSchema,
+    subjects: z.string().optional() // Comma-separated subject list
+}).passthrough();
 
 /** POST /study/:examId/complete — mark a study session as complete */
 export const completeStudySessionSchema = z.object({

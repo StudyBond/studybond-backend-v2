@@ -5,8 +5,9 @@ import { selectQuestionsForExam } from '../exams/question-selector';
 import { institutionContextService } from '../../shared/institutions/context';
 import { institutionExamConfigService } from '../../shared/institutions/exam-config';
 import { normalizeSubjectLabel } from '../../shared/utils/subjects';
+import { parseTopicString } from '../../shared/utils/topics';
 import { QUESTION_POOLS } from '../questions/questions.constants';
-import { StartStudySessionInput, CompleteStudySessionInput, StudySessionResponse, StudyQuestionForClient, CompleteStudySessionResponse } from './study.types';
+import { StartStudySessionInput, CompleteStudySessionInput, StudySessionResponse, StudyQuestionForClient, CompleteStudySessionResponse, GetTopicsResponse, SubjectTopicTree } from './study.types';
 
 export class StudyService {
     /**
@@ -53,6 +54,7 @@ export class StudyService {
 
         // 4. Fetch questions using selector
         let questions: any[] = [];
+        const topicsFilter = input.selectedTopics && input.selectedTopics.length > 0 ? input.selectedTopics : undefined;
 
         if (isPremium) {
             // Premium users get a rich mix of Real Past Question Bank & Practice Pool questions
@@ -67,6 +69,7 @@ export class StudyService {
                         institutionId: institution.id,
                         realQuestionPool: QUESTION_POOLS.REAL_BANK,
                         topicBlueprints,
+                        topicsFilter,
                     }
                 );
             } catch {
@@ -81,6 +84,7 @@ export class StudyService {
                         institutionId: institution.id,
                         realQuestionPool: QUESTION_POOLS.REAL_BANK,
                         topicBlueprints,
+                        topicsFilter,
                     }
                 );
             }
@@ -96,7 +100,8 @@ export class StudyService {
                     institutionId: institution.id,
                     realQuestionPool: QUESTION_POOLS.REAL_BANK,
                     topicBlueprints,
-                    isFeaturedFree: true // Free users access featured free exam pool questions
+                    isFeaturedFree: true,
+                    topicsFilter,
                 }
             );
 
@@ -112,7 +117,8 @@ export class StudyService {
                         institutionId: institution.id,
                         realQuestionPool: QUESTION_POOLS.REAL_BANK,
                         topicBlueprints,
-                        isFeaturedFree: false
+                        isFeaturedFree: false,
+                        topicsFilter,
                     }
                 );
             }
@@ -258,5 +264,106 @@ export class StudyService {
             }
         });
         return (result._max.sessionNumber ?? 0) + 1;
+    }
+
+    /**
+     * Get structured topic and subtopic hierarchy for requested subjects.
+     */
+    async getAvailableTopics(userId: number, requestedSubjects?: string[], institutionCode?: string): Promise<GetTopicsResponse> {
+        const institution = await institutionContextService.resolveForUser(userId, institutionCode);
+
+        let targetSubjects: string[] = [];
+        if (requestedSubjects && requestedSubjects.length > 0) {
+            targetSubjects = requestedSubjects.map((s) => normalizeSubjectLabel(s));
+        } else {
+            targetSubjects = ['English', 'Mathematics', 'Physics', 'Chemistry', 'Biology'];
+        }
+
+        const rawGroups = await prisma.question.groupBy({
+            by: ['subject', 'topic'],
+            where: {
+                institutionId: institution.id,
+                subject: { in: targetSubjects },
+                topic: { not: null }
+            },
+            _count: {
+                id: true
+            }
+        });
+
+        const subjectTreesMap = new Map<string, SubjectTopicTree>();
+        for (const subj of targetSubjects) {
+            subjectTreesMap.set(subj, {
+                subject: subj,
+                totalQuestions: 0,
+                topicFamilies: []
+            });
+        }
+
+        // Intermediate map: Subject -> TopicFamily -> Subtopics
+        const familyMaps = new Map<string, Map<string, Map<string | 'MAIN', { count: number; rawTopics: Set<string> }>>>();
+
+        for (const item of rawGroups) {
+            if (!item.topic || !item.subject) continue;
+            const normSubject = normalizeSubjectLabel(item.subject);
+
+            if (!familyMaps.has(normSubject)) {
+                familyMaps.set(normSubject, new Map());
+            }
+
+            const parsed = parseTopicString(item.topic);
+            const subMap = familyMaps.get(normSubject)!;
+
+            if (!subMap.has(parsed.topicFamily)) {
+                subMap.set(parsed.topicFamily, new Map());
+            }
+
+            const subtopicMap = subMap.get(parsed.topicFamily)!;
+            const subKey = parsed.subtopic || 'MAIN';
+
+            if (!subtopicMap.has(subKey)) {
+                subtopicMap.set(subKey, { count: 0, rawTopics: new Set() });
+            }
+
+            const subEntry = subtopicMap.get(subKey)!;
+            subEntry.count += item._count.id;
+            subEntry.rawTopics.add(item.topic);
+        }
+
+        for (const [subj, subMap] of familyMaps.entries()) {
+            const tree = subjectTreesMap.get(subj);
+            if (!tree) continue;
+
+            for (const [family, subtopicMap] of subMap.entries()) {
+                let familyTotal = 0;
+                const subtopicsList: any[] = [];
+
+                for (const [subName, entry] of subtopicMap.entries()) {
+                    familyTotal += entry.count;
+                    if (subName !== 'MAIN') {
+                        subtopicsList.push({
+                            name: subName,
+                            questionCount: entry.count,
+                            rawTopics: Array.from(entry.rawTopics)
+                        });
+                    }
+                }
+
+                subtopicsList.sort((a, b) => b.questionCount - a.questionCount);
+
+                tree.totalQuestions += familyTotal;
+                tree.topicFamilies.push({
+                    topicFamily: family,
+                    totalQuestions: familyTotal,
+                    subtopics: subtopicsList
+                });
+            }
+
+            tree.topicFamilies.sort((a, b) => b.totalQuestions - a.totalQuestions);
+        }
+
+        return {
+            subjects: Array.from(subjectTreesMap.values())
+        };
     }
 }

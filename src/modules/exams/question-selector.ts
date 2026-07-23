@@ -16,6 +16,28 @@ interface QuestionSelectionOptions {
     topicBlueprints?: TopicBlueprint | null;
     /** When true, only select questions flagged as isFeaturedFree by admins (for free user exams) */
     isFeaturedFree?: boolean;
+    /** Optional topic/subtopic filter list */
+    topicsFilter?: string[];
+}
+
+function buildTopicFilter(topicsFilter?: string[]) {
+    if (!topicsFilter || topicsFilter.length === 0) {
+        return {};
+    }
+
+    const topicConditions: any[] = [];
+    for (const t of topicsFilter) {
+        if (!t || !t.trim()) continue;
+        const clean = t.trim();
+        topicConditions.push({ topic: { equals: clean, mode: 'insensitive' } });
+        topicConditions.push({ topic: { startsWith: `${clean} —`, mode: 'insensitive' } });
+        topicConditions.push({ topic: { startsWith: `${clean} -`, mode: 'insensitive' } });
+        topicConditions.push({ topic: { startsWith: `${clean} –`, mode: 'insensitive' } });
+        topicConditions.push({ topic: { startsWith: `${clean}:`, mode: 'insensitive' } });
+    }
+
+    if (topicConditions.length === 0) return {};
+    return { OR: topicConditions };
 }
 
 function buildRealQuestionPoolFilter(options: {
@@ -304,6 +326,8 @@ export async function selectQuestionsForExam(
         isFeaturedFree: options.isFeaturedFree
     });
 
+    const topicWhereFilter = buildTopicFilter(options.topicsFilter);
+
     for (const subject of subjects) {
         const normalizedSubject = normalizeSubjectLabel(subject);
         const subjectVariants = getSubjectSearchVariants(normalizedSubject);
@@ -316,6 +340,7 @@ export async function selectQuestionsForExam(
                     subject: {
                         in: subjectVariants
                     },
+                    ...topicWhereFilter,
                     questionType: QUESTION_TYPES.REAL_PAST_QUESTION,
                     ...realQuestionPoolFilter,
                     id: {
@@ -352,12 +377,7 @@ export async function selectQuestionsForExam(
         // Phase 1: Fetch lightweight metadata for the ENTIRE candidate pool
         //          (no `take` limit — scan the full database for this subject).
         // Phase 2: Deduplicate + randomly select from the complete pool.
-        //
-        // This eliminates the "paginated selection" bug where the same
-        // subset of questions (ordered by PK) was always returned, making
-        // 80%+ of the question bank invisible to the shuffler.
         // ================================================================
-
 
         let selectedIds: number[];
 
@@ -371,6 +391,7 @@ export async function selectQuestionsForExam(
                     where: {
                         ...(institutionId ? { institutionId } : {}),
                         subject: { in: subjectVariants },
+                        ...topicWhereFilter,
                         questionType: QUESTION_TYPES.REAL_PAST_QUESTION,
                         ...realQuestionPoolFilter,
                         id: { notIn: excludeQuestionIds.length > 0 ? excludeQuestionIds : undefined }
@@ -381,6 +402,7 @@ export async function selectQuestionsForExam(
                     where: {
                         ...(institutionId ? { institutionId } : {}),
                         subject: { in: subjectVariants },
+                        ...topicWhereFilter,
                         questionPool: QUESTION_POOLS.PRACTICE,
                         questionType: PRACTICE_QUESTION_TYPE_FILTER,
                         id: { notIn: excludeQuestionIds.length > 0 ? excludeQuestionIds : undefined }
@@ -393,14 +415,14 @@ export async function selectQuestionsForExam(
             realCandidates = deduplicateByQuestionText(realCandidates);
             practiceCandidates = deduplicateByQuestionText(practiceCandidates);
 
-            if (realCandidates.length < realQuestionCount) {
+            if (realCandidates.length < realQuestionCount && (!options.topicsFilter || options.topicsFilter.length === 0)) {
                 throw new AppError(
                     `Insufficient ${normalizedSubject} real exam questions for mixed mode. Need ${realQuestionCount}, found ${realCandidates.length}.`,
                     422
                 );
             }
 
-            if (practiceCandidates.length < practiceQuestionCount) {
+            if (practiceCandidates.length < practiceQuestionCount && (!options.topicsFilter || options.topicsFilter.length === 0)) {
                 throw new AppError(
                     `Insufficient ${normalizedSubject} practice questions for mixed mode. Need ${practiceQuestionCount}, found ${practiceCandidates.length}.`,
                     422
@@ -420,6 +442,7 @@ export async function selectQuestionsForExam(
                 where: {
                     ...(institutionId ? { institutionId } : {}),
                     subject: { in: subjectVariants },
+                    ...topicWhereFilter,
                     ...(examType === EXAM_TYPES.REAL_PAST_QUESTION
                         ? realQuestionPoolFilter
                         : { questionPool: QUESTION_POOLS.PRACTICE }),
@@ -432,7 +455,7 @@ export async function selectQuestionsForExam(
             // Phase 2: Deduplicate + randomly select from the FULL global pool
             candidates = deduplicateByQuestionText(candidates);
 
-            if (candidates.length < questionsPerSubject) {
+            if (candidates.length < questionsPerSubject && (!options.topicsFilter || options.topicsFilter.length === 0)) {
                 throw new AppError(
                     `Insufficient ${normalizedSubject} questions. Need ${questionsPerSubject}, found ${candidates.length}`,
                     422

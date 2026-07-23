@@ -7,6 +7,26 @@ import { successEnvelopeSchema, withStandardErrorResponses } from '../../shared/
 export async function studyRoutes(app: FastifyInstance) {
     const controller = new StudyController();
 
+    /** GET /study/topics — Fetch available topic families and subtopics tree */
+    app.get('/topics', {
+        preValidation: [app.authenticate],
+        config: {
+            rateLimit: {
+                max: 60,
+                timeWindow: '1 minute'
+            }
+        },
+        schema: {
+            tags: ['Study Mode'],
+            summary: 'Fetch available topics and subtopics tree',
+            description: 'Returns topic families and subtopics with live question counts per subject.',
+            security: [{ bearerAuth: [] }],
+            response: withStandardErrorResponses({
+                200: successEnvelopeSchema(z.any())
+            })
+        }
+    }, controller.getTopics);
+
     /** POST /study/start — Start a new study session */
     app.post('/start', {
         preValidation: [app.authenticate],

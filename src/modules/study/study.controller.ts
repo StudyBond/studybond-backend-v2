@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { StudyService } from './study.service';
-import { startStudySessionSchema, completeStudySessionSchema, studyIdParamSchema } from './study.schema';
+import { startStudySessionSchema, completeStudySessionSchema, studyIdParamSchema, getTopicsQuerySchema } from './study.schema';
 import { parseWithSchema } from '../../shared/utils/validation';
 
 export class StudyController {
@@ -17,6 +17,19 @@ export class StudyController {
         const result = await this.studyService.startStudySession(userId, payload);
 
         return reply.status(201).send({
+            success: true,
+            data: result
+        });
+    };
+
+    getTopics = async (req: FastifyRequest, reply: FastifyReply) => {
+        const query = parseWithSchema(getTopicsQuerySchema, req.query, 'Invalid topics query request');
+        const userId = (req.user as { userId: number }).userId;
+
+        const subjectsList = query.subjects ? query.subjects.split(',').filter(Boolean) : undefined;
+        const result = await this.studyService.getAvailableTopics(userId, subjectsList, query.institutionCode);
+
+        return reply.status(200).send({
             success: true,
             data: result
         });
