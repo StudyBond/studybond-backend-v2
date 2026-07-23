@@ -44,9 +44,12 @@ function buildRealQuestionPoolFilter(options: {
     realQuestionPool: string;
     isFeaturedFree?: boolean;
 }) {
-    if (options.isFeaturedFree) {
+    if (options.isFeaturedFree || options.realQuestionPool === QUESTION_POOLS.FREE_EXAM) {
         return {
-            isFeaturedFree: true
+            OR: [
+                { isFeaturedFree: true },
+                { questionPool: QUESTION_POOLS.FREE_EXAM }
+            ]
         };
     }
 
@@ -433,9 +436,26 @@ export async function selectQuestionsForExam(
             const selectedPractice = randomSelect(practiceCandidates, practiceQuestionCount);
             selectedIds = [...selectedReal, ...selectedPractice].map(q => q.id);
         } else {
+            const isFreePool = options.isFeaturedFree || options.realQuestionPool === QUESTION_POOLS.FREE_EXAM;
+
             const questionTypeFilter = examType === EXAM_TYPES.REAL_PAST_QUESTION
                 ? QUESTION_TYPES.REAL_PAST_QUESTION
                 : PRACTICE_QUESTION_TYPE_FILTER;
+
+            const poolWhereCondition = isFreePool
+                ? {
+                    OR: [
+                        { isFeaturedFree: true },
+                        { questionPool: QUESTION_POOLS.FREE_EXAM }
+                    ]
+                }
+                : (examType === EXAM_TYPES.REAL_PAST_QUESTION
+                    ? realQuestionPoolFilter
+                    : { questionPool: QUESTION_POOLS.PRACTICE });
+
+            const typeWhereCondition = isFreePool
+                ? {}
+                : { questionType: questionTypeFilter };
 
             // Phase 1: Lightweight metadata fetch — entire pool, no take limit
             let candidates = await prisma.question.findMany({
@@ -443,10 +463,8 @@ export async function selectQuestionsForExam(
                     ...(institutionId ? { institutionId } : {}),
                     subject: { in: subjectVariants },
                     ...topicWhereFilter,
-                    ...(examType === EXAM_TYPES.REAL_PAST_QUESTION
-                        ? realQuestionPoolFilter
-                        : { questionPool: QUESTION_POOLS.PRACTICE }),
-                    questionType: questionTypeFilter,
+                    ...poolWhereCondition,
+                    ...typeWhereCondition,
                     id: { notIn: excludeQuestionIds.length > 0 ? excludeQuestionIds : undefined }
                 },
                 select: buildCandidateSelect(),

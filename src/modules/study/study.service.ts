@@ -54,7 +54,9 @@ export class StudyService {
 
         // 4. Fetch questions using selector
         let questions: any[] = [];
-        const topicsFilter = input.selectedTopics && input.selectedTopics.length > 0 ? input.selectedTopics : undefined;
+        const topicsFilter = (isPremium && input.selectedTopics && input.selectedTopics.length > 0)
+            ? input.selectedTopics
+            : undefined;
 
         if (isPremium) {
             // Premium users get a rich mix of Real Past Question Bank & Practice Pool questions
@@ -89,36 +91,56 @@ export class StudyService {
                 );
             }
         } else {
-            // Free users pull exclusively from their Free Exam Pool (featured free question sample)
-            questions = await selectQuestionsForExam(
-                input.subjects,
-                EXAM_TYPES.PRACTICE,
-                questionsPerSubject,
-                [],
-                {
-                    deterministic: false,
-                    institutionId: institution.id,
-                    realQuestionPool: QUESTION_POOLS.REAL_BANK,
-                    topicBlueprints,
-                    isFeaturedFree: true,
-                    topicsFilter,
-                }
-            );
-
-            // Fallback: if no featured free questions exist for the subject, fetch standard practice bank
-            if (questions.length === 0) {
+            // Free users pull exclusively from their admin-curated Free Exam Pool (featured free real past question sample)
+            try {
                 questions = await selectQuestionsForExam(
                     input.subjects,
-                    EXAM_TYPES.PRACTICE,
+                    EXAM_TYPES.REAL_PAST_QUESTION,
                     questionsPerSubject,
                     [],
                     {
                         deterministic: false,
                         institutionId: institution.id,
-                        realQuestionPool: QUESTION_POOLS.REAL_BANK,
+                        realQuestionPool: QUESTION_POOLS.FREE_EXAM,
                         topicBlueprints,
-                        isFeaturedFree: false,
+                        isFeaturedFree: true,
                         topicsFilter,
+                    }
+                );
+            } catch (err) {
+                // If specific topic filter yielded no questions in free pool, fallback to free exam pool without topic filter
+                if (topicsFilter && topicsFilter.length > 0) {
+                    questions = await selectQuestionsForExam(
+                        input.subjects,
+                        EXAM_TYPES.REAL_PAST_QUESTION,
+                        questionsPerSubject,
+                        [],
+                        {
+                            deterministic: false,
+                            institutionId: institution.id,
+                            realQuestionPool: QUESTION_POOLS.FREE_EXAM,
+                            topicBlueprints,
+                            isFeaturedFree: true,
+                        }
+                    );
+                } else {
+                    throw err;
+                }
+            }
+
+            // Fallback: if questions is empty, retry selection strictly within Free Exam pool
+            if (questions.length === 0) {
+                questions = await selectQuestionsForExam(
+                    input.subjects,
+                    EXAM_TYPES.REAL_PAST_QUESTION,
+                    questionsPerSubject,
+                    [],
+                    {
+                        deterministic: false,
+                        institutionId: institution.id,
+                        realQuestionPool: QUESTION_POOLS.FREE_EXAM,
+                        topicBlueprints,
+                        isFeaturedFree: true,
                     }
                 );
             }
@@ -272,6 +294,13 @@ export class StudyService {
     async getAvailableTopics(userId: number, requestedSubjects?: string[], institutionCode?: string): Promise<GetTopicsResponse> {
         const institution = await institutionContextService.resolveForUser(userId, institutionCode);
 
+        // Check user tier to filter available topics accordingly
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { isPremium: true }
+        });
+        const isPremium = user?.isPremium ?? false;
+
         let targetSubjects: string[] = [];
         if (requestedSubjects && requestedSubjects.length > 0) {
             targetSubjects = requestedSubjects.map((s) => normalizeSubjectLabel(s));
@@ -279,12 +308,22 @@ export class StudyService {
             targetSubjects = ['English', 'Mathematics', 'Physics', 'Chemistry', 'Biology'];
         }
 
+        const poolCondition = isPremium
+            ? {}
+            : {
+                OR: [
+                    { isFeaturedFree: true },
+                    { questionPool: QUESTION_POOLS.FREE_EXAM }
+                ]
+            };
+
         const rawGroups = await prisma.question.groupBy({
             by: ['subject', 'topic'],
             where: {
                 institutionId: institution.id,
                 subject: { in: targetSubjects },
-                topic: { not: null }
+                topic: { not: null },
+                ...poolCondition
             },
             _count: {
                 id: true
